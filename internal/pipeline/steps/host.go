@@ -179,7 +179,7 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 		// Parse the worktree's origin rather than the stored upstream URL: URL
 		// redaction rewrites the AWS profile in a codecommit://<profile>@<repo>
 		// remote to a placeholder, and the profile selects the credentials.
-		remote := resolveUpstreamURL(sctx)
+		remote, fromOrigin := resolveUpstreamURLWithOrigin(sctx)
 		region, profile, repo, ok := codecommit.ResolveRemote(remote, scm.ResolveHost(sctx.Ctx, remote))
 		if ok && profile == "" {
 			return nil, codeCommitProfileRequiredReason
@@ -192,7 +192,7 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 		if !ok {
 			return nil, "could not resolve the AWS CodeCommit repository from the remote URL"
 		}
-		if profile == safeurl.RedactedUserinfo {
+		if profile == safeurl.RedactedUserinfo && !fromOrigin {
 			return nil, codeCommitProfileRequiredReason
 		}
 		return codecommit.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, region, profile, repo), ""

@@ -94,6 +94,27 @@ func TestBuildHost_CodeCommitUsesProfileFromWorktreeOrigin(t *testing.T) {
 	}
 }
 
+func TestBuildHost_CodeCommitAllowsLiteralRedactedProfileFromWorktreeOrigin(t *testing.T) {
+	workDir := t.TempDir()
+	origin := "codecommit://" + safeurl.RedactedUserinfo + "@Example-Payments-Client"
+	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", origin}} {
+		if out, err := exec.Command(testGitExecutable, append([]string{"-C", workDir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	sctx := &pipeline.StepContext{
+		Ctx:     context.Background(),
+		WorkDir: workDir,
+		Run:     &db.Run{Branch: "feature/codecommit"},
+		Repo:    &db.Repo{UpstreamURL: safeurl.Redact(origin), DefaultBranch: "main"},
+	}
+
+	host, reason := buildHost(sctx, scm.ProviderCodeCommit)
+	if host == nil || reason != "" {
+		t.Fatalf("buildHost() = (%v, %q), want CodeCommit host", host, reason)
+	}
+}
+
 func TestBuildHost_CodeCommitRefusesProfilelessRemoteForms(t *testing.T) {
 	prURL := "https://eu-west-2.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42"
 	for _, tc := range []struct {
@@ -129,6 +150,7 @@ func TestBuildHost_CodeCommitSkipsUnroutableRepositories(t *testing.T) {
 		name       string
 		repo       *db.Repo
 		wantReason string
+		exact      bool
 	}{
 		{
 			name: "fork routing",
@@ -142,7 +164,8 @@ func TestBuildHost_CodeCommitSkipsUnroutableRepositories(t *testing.T) {
 			// The worktree has no origin to recover the profile from.
 			name:       "redacted profile",
 			repo:       &db.Repo{UpstreamURL: "codecommit://" + safeurl.RedactedUserinfo + "@Example-Payments-Client"},
-			wantReason: "explicit AWS profile",
+			wantReason: codeCommitProfileRequiredReason,
+			exact:      true,
 		},
 		{
 			name:       "unparseable remote",
@@ -153,8 +176,9 @@ func TestBuildHost_CodeCommitSkipsUnroutableRepositories(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sctx := &pipeline.StepContext{Ctx: context.Background(), WorkDir: t.TempDir(), Run: &db.Run{}, Repo: tc.repo}
 			host, reason := buildHost(sctx, scm.ProviderCodeCommit)
-			if host != nil || !strings.Contains(reason, tc.wantReason) {
-				t.Fatalf("buildHost() = (%v, %q), want skip reason containing %q", host, reason, tc.wantReason)
+			wrongReason := tc.exact && reason != tc.wantReason || !tc.exact && !strings.Contains(reason, tc.wantReason)
+			if host != nil || wrongReason {
+				t.Fatalf("buildHost() = (%v, %q), want skip reason %q", host, reason, tc.wantReason)
 			}
 		})
 	}

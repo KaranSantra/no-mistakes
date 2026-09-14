@@ -430,8 +430,19 @@ func (h *Host) parsePullRequest(out []byte, wantID string) (*pullRequest, error)
 	if len(got.Targets) != 1 {
 		return nil, fmt.Errorf("expected one pull request target, got %d", len(got.Targets))
 	}
-	if name := got.Targets[0].RepositoryName; name != h.repo {
+	status := strings.ToUpper(strings.TrimSpace(got.PullRequestStatus))
+	if status != "OPEN" && status != "CLOSED" {
+		return nil, fmt.Errorf("unknown pullRequestStatus %q", got.PullRequestStatus)
+	}
+	target := got.Targets[0]
+	if name := target.RepositoryName; name != h.repo {
 		return nil, fmt.Errorf("repository %q does not match configured repository %q", name, h.repo)
+	}
+	if strings.TrimSpace(target.SourceReference) == "" {
+		return nil, errors.New("missing sourceReference")
+	}
+	if strings.TrimSpace(target.DestinationReference) == "" {
+		return nil, errors.New("missing destinationReference")
 	}
 	return got, nil
 }

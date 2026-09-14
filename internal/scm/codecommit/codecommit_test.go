@@ -208,6 +208,9 @@ func TestFindPRRejectsIndeterminateResponses(t *testing.T) {
 		{name: "read mismatched id", responses: map[string]awsTestResponse{list: listed, get: {stdout: pullRequestJSON("8", "OPEN", "feature/codecommit", "main", false)}}},
 		{name: "read without targets", responses: map[string]awsTestResponse{list: listed, get: {stdout: `{"pullRequest":{"pullRequestId":"9","pullRequestStatus":"OPEN","pullRequestTargets":[]}}`}}},
 		{name: "read from another repository", responses: map[string]awsTestResponse{list: listed, get: {stdout: strings.Replace(pullRequestJSON("9", "OPEN", "feature/codecommit", "main", false), testRepo, "Example-Other-Client", 1)}}},
+		{name: "read without status", responses: map[string]awsTestResponse{list: listed, get: {stdout: strings.Replace(pullRequestJSON("9", "OPEN", "feature/codecommit", "main", false), `"pullRequestStatus":"OPEN",`, "", 1)}}},
+		{name: "read without source reference", responses: map[string]awsTestResponse{list: listed, get: {stdout: strings.Replace(pullRequestJSON("9", "OPEN", "feature/codecommit", "main", false), `"sourceReference":"refs/heads/feature/codecommit",`, "", 1)}}},
+		{name: "read without destination reference", responses: map[string]awsTestResponse{list: listed, get: {stdout: strings.Replace(pullRequestJSON("9", "OPEN", "feature/codecommit", "main", false), `"destinationReference":"refs/heads/main",`, "", 1)}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, _ := newTestHost(tc.responses)
