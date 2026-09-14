@@ -304,22 +304,41 @@ static Git credentials or an SSH key while an ambient AWS CLI identity opens
 the PR in a different AWS account that has the same repository name.
 China-region PR links use the `console.amazonaws.cn` partition domain.
 
-The identity needs `codecommit:GetRepository`, `ListPullRequests`,
-`GetPullRequest`, `CreatePullRequest`, `UpdatePullRequestDescription`, and
-`UpdatePullRequestTitle` on the repository. The PR step first reads the
-repository with that profile, so an expired SSO session skips the step with a
-reminder to run
+Both of these permission sets are required on the repository:
+
+- Git transport permissions: `codecommit:GitPull` and `codecommit:GitPush` for
+  pipeline fetch, rebase, and push operations through `git-remote-codecommit`.
+- Pull request API permissions: `codecommit:GetRepository`,
+  `codecommit:ListPullRequests`, `codecommit:GetPullRequest`,
+  `codecommit:CreatePullRequest`, `codecommit:UpdatePullRequestTitle`, and
+  `codecommit:UpdatePullRequestDescription`.
+
+The PR step first reads the repository with that profile, so an expired SSO
+session skips the step with a reminder to run
 `aws sso login --profile 'AWSAdministratorAccess-123456789012'`.
+
+**Known limitation:** A rerun inherits the previous run's pull request URL when
+the push target fingerprint is unchanged. A CodeCommit remote names an AWS
+profile rather than its resolved account, so editing that existing profile in
+`~/.aws/config` to point to a different account leaves the fingerprint
+unchanged. If the new account has a same-region, same-named repository and an
+open pull request with the same number, rerunning the same head can update that
+unrelated pull request. Git push follows the same profile and consistently
+targets the new account; the harm is limited to reusing the inherited pull
+request number. After repointing a profile to another account, avoid rerunning
+the same head: close or abort the prior run's pull request tracking and start
+from a new commit instead.
 
 **What you get:**
 
 - PR creation and update (`aws codecommit create-pull-request` / `update-pull-request-description` / `update-pull-request-title`).
   The [PR step reference](/no-mistakes/reference/pipeline-steps/#pr) owns title
   and ordinary-description budgets; [`pr.template`](/no-mistakes/reference/repo-config/#prtemplate)
-  owns author-preserving publication and its non-truncating budget behavior. If
-  more than one open pull request matches the source branch and requested base,
-  discovery refuses the ambiguity and names the pull request IDs to close until
-  one remains.
+  owns author-preserving publication and its non-truncating budget behavior.
+  Discovery matches open pull requests by source branch only; the PR step does
+  not supply a base filter. Two or more open pull requests from the same source
+  branch are refused as ambiguous regardless of their destination branches,
+  and the error names the pull request IDs to close until one remains.
 - PR links that open the pull request in the AWS console for the repository's region
 - CI monitoring of PR state until the PR is merged or closed
 
