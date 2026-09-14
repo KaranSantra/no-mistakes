@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kunchenguid/no-mistakes/internal/agent"
+	"github.com/kunchenguid/no-mistakes/internal/branchsync"
 	"github.com/kunchenguid/no-mistakes/internal/custody"
 	"github.com/kunchenguid/no-mistakes/internal/db"
 	"github.com/kunchenguid/no-mistakes/internal/git"
@@ -972,7 +973,7 @@ func TestRerunInheritsPRBaseBranchFromSelectedRun(t *testing.T) {
 	}
 }
 
-func TestRerunInheritsPRURLFromSelectedRun(t *testing.T) {
+func TestRerunInheritsPRURLFromMatchingPushTarget(t *testing.T) {
 	step := &mockPassStep{name: types.StepReview}
 	p, d := startTestDaemonWithSteps(t, func() []pipeline.Step {
 		return []pipeline.Step{step}
@@ -1001,6 +1002,13 @@ func TestRerunInheritsPRURLFromSelectedRun(t *testing.T) {
 	if err := d.UpdateRunPRURL(first.RunID, prURL); err != nil {
 		t.Fatal(err)
 	}
+	if err := d.UpdateRunPushBinding(first.RunID, db.PushBinding{
+		HeadSHA: headSHA, TargetKind: "upstream",
+		TargetFingerprint: branchsync.TargetFingerprint("https://github.com/test/repo"),
+		Ref:               "refs/heads/main",
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	var rerun ipc.RerunResult
 	err = client.Call(ipc.MethodRerun, &ipc.RerunParams{
@@ -1014,6 +1022,68 @@ func TestRerunInheritsPRURLFromSelectedRun(t *testing.T) {
 	got := waitForRunTerminalState(t, d, rerun.RunID)
 	if got.PRURL == nil || *got.PRURL != prURL {
 		t.Fatalf("rerun PRURL = %#v, want inherited %s", got.PRURL, prURL)
+	}
+}
+
+func TestRerunDoesNotInheritPRURLAcrossRefreshedPushTarget(t *testing.T) {
+	step := &mockPassStep{name: types.StepReview}
+	p, d := startTestDaemonWithSteps(t, func() []pipeline.Step {
+		return []pipeline.Step{step}
+	})
+
+	repo, headSHA := setupTestGitRepo(t, p, d, "refreshed-pr-url-rerun-repo")
+	const previousTarget = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	const refreshedTarget = "codecommit::us-west-2://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	const prURL = "https://us-east-1.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/15"
+	var err error
+	repo, err = d.ReplaceRepoURLs(repo.ID, previousTarget, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := ipc.Dial(p.Socket())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	var first ipc.PushReceivedResult
+	if err := client.Call(ipc.MethodPushReceived, &ipc.PushReceivedParams{
+		Gate: p.RepoDir(repo.ID), Ref: "refs/heads/main",
+		Old: "0000000000000000000000000000000000000000", New: headSHA,
+	}, &first); err != nil {
+		t.Fatal(err)
+	}
+	waitForRunTerminalState(t, d, first.RunID)
+	if err := d.UpdateRunPRURL(first.RunID, prURL); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.UpdateRunPushBinding(first.RunID, db.PushBinding{
+		HeadSHA: headSHA, TargetKind: "upstream",
+		TargetFingerprint: branchsync.TargetFingerprint(previousTarget),
+		Ref:               "refs/heads/main",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo.WorkingPath, "remote", "add", "origin", refreshedTarget)
+	gitCmd(t, p.RepoDir(repo.ID), "config", "url."+p.RepoDir(repo.ID)+".insteadOf", refreshedTarget)
+
+	var rerun ipc.RerunResult
+	if err := client.Call(ipc.MethodRerun, &ipc.RerunParams{
+		RepoID: repo.ID, Branch: "main", PreviousRunID: first.RunID,
+	}, &rerun); err != nil {
+		t.Fatal(err)
+	}
+	got := waitForRunTerminalState(t, d, rerun.RunID)
+	if got.PRURL != nil && *got.PRURL != "" {
+		t.Fatalf("rerun PRURL = %#v, want no inheritance across refreshed push target", got.PRURL)
+	}
+	stored, err := d.GetRepo(repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.UpstreamURL != refreshedTarget {
+		t.Fatalf("stored upstream = %q, want refreshed target %q", stored.UpstreamURL, refreshedTarget)
 	}
 }
 
@@ -1432,6 +1502,13 @@ func TestProofLaunchFallbackInheritsOnlyLivePRIdentity(t *testing.T) {
 			prior := launch("prior-nonce", "")
 			const prURL = "https://github.com/test/repo/pull/42"
 			if err := d.UpdateRunPRURL(prior.ID, prURL); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.UpdateRunPushBinding(prior.ID, db.PushBinding{
+				HeadSHA: head, TargetKind: "upstream",
+				TargetFingerprint: branchsync.TargetFingerprint(repo.PushURL()),
+				Ref:               "refs/heads/main",
+			}); err != nil {
 				t.Fatal(err)
 			}
 			if state != "" {
