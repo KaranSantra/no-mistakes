@@ -316,7 +316,10 @@ reminder to run
 - PR creation and update (`aws codecommit create-pull-request` / `update-pull-request-description` / `update-pull-request-title`).
   The [PR step reference](/no-mistakes/reference/pipeline-steps/#pr) owns title
   and ordinary-description budgets; [`pr.template`](/no-mistakes/reference/repo-config/#prtemplate)
-  owns author-preserving publication and its non-truncating budget behavior.
+  owns author-preserving publication and its non-truncating budget behavior. If
+  more than one open pull request matches the source branch and requested base,
+  discovery refuses the ambiguity and names the pull request IDs to close until
+  one remains.
 - PR links that open the pull request in the AWS console for the repository's region
 - CI monitoring of PR state until the PR is merged or closed
 

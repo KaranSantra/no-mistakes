@@ -45,6 +45,7 @@ Safest local verification sequence after non-trivial changes:
 - The PR URL is the partition-aware regional console URL ending in the PR ID, including `console.amazonaws.cn` for China. Runs persist only that URL and `scm.ExtractPRNumber` reads its last segment, so a `?region=` query or `/details` suffix breaks CI resume.
 - Merged state is head-bound: `GetMergedProof` reads the pull request target's `sourceCommit`, compares it with the run head even after merge, and returns `scm.ErrHeadChanged` on a mismatch.
 - `GetPRBaseBranch` reads the live target's `destinationReference`, so resumed CI follows the existing PR base rather than since-changed repository configuration.
+- `FindPR` reads every listed open pull request and refuses when more than one matches the source branch and requested base; it never chooses an arbitrary or newest match. The error names the matching IDs and tells the user to close extras until one remains.
 - CodeCommit has no checks API: `GetChecks` returns an empty list, never `ErrUnsupported` (which the CI step counts as a failed poll), so repositories need trusted `no_ci: true` to reach readiness.
 - PR updates write the title before the description so a title failure cannot leave a managed body that suppresses title recovery on the next run.
 - Regressions: `internal/scm/codecommit/*_test.go`, `TestRefreshRepoURLsRefreshesOpaqueCodeCommitTarget`, `TestBuildHost_CodeCommitRefusesUnsupportedRemoteForms`, `TestDetectProvider_CodeCommit`, `TestWebPRURLRoundTripsThroughRunRecovery`.

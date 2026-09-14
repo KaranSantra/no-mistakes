@@ -135,16 +135,17 @@ func TestCommandsRefuseUnnamedProfile(t *testing.T) {
 	}
 }
 
-func TestFindPRReadsNewestOpenPullRequestsUntilBranchMatches(t *testing.T) {
+func TestFindPRReturnsSingleMatchAmongOpenPullRequests(t *testing.T) {
 	t.Parallel()
 
 	h, fake := newTestHost(map[string]awsTestResponse{
 		awsCmd("list-pull-requests --repository-name " + testRepo + " --pull-request-status OPEN"): {stdout: `{"pullRequestIds":["3","12","7"]}`},
-		awsCmd("get-pull-request --pull-request-id 12"):                                            {stdout: pullRequestJSON("12", "OPEN", "other", "main", false)},
+		awsCmd("get-pull-request --pull-request-id 3"):                                             {stdout: pullRequestJSON("3", "OPEN", "other", "main", false)},
+		awsCmd("get-pull-request --pull-request-id 12"):                                            {stdout: pullRequestJSON("12", "OPEN", "feature/codecommit", "develop", false)},
 		awsCmd("get-pull-request --pull-request-id 7"):                                             {stdout: pullRequestJSON("7", "OPEN", "feature/codecommit", "main", false)},
 	})
 
-	pr, err := h.FindPR(context.Background(), "feature/codecommit", "")
+	pr, err := h.FindPR(context.Background(), "feature/codecommit", "main")
 	if err != nil {
 		t.Fatalf("FindPR() error = %v", err)
 	}
@@ -152,9 +153,32 @@ func TestFindPRReadsNewestOpenPullRequestsUntilBranchMatches(t *testing.T) {
 	if pr == nil || *pr != want {
 		t.Fatalf("FindPR() = %+v, want %+v", pr, want)
 	}
-	// The match on 7 ends the scan before the older 3 is read.
-	if got := fake.keys(); len(got) != 3 || !strings.Contains(got[1], "--pull-request-id 12") || !strings.Contains(got[2], "--pull-request-id 7") {
-		t.Fatalf("FindPR() commands = %q, want list then newest-first reads 12, 7", got)
+	if got := fake.keys(); len(got) != 4 || !strings.Contains(got[1], "--pull-request-id 3") || !strings.Contains(got[2], "--pull-request-id 12") || !strings.Contains(got[3], "--pull-request-id 7") {
+		t.Fatalf("FindPR() commands = %q, want list followed by every open pull request", got)
+	}
+}
+
+func TestFindPRRejectsMultipleMatchingOpenPullRequests(t *testing.T) {
+	t.Parallel()
+
+	h, fake := newTestHost(map[string]awsTestResponse{
+		awsCmd("list-pull-requests --repository-name " + testRepo + " --pull-request-status OPEN"): {stdout: `{"pullRequestIds":["12","7","3"]}`},
+		awsCmd("get-pull-request --pull-request-id 12"):                                            {stdout: pullRequestJSON("12", "OPEN", "feature/codecommit", "main", false)},
+		awsCmd("get-pull-request --pull-request-id 7"):                                             {stdout: pullRequestJSON("7", "OPEN", "feature/codecommit", "main", false)},
+		awsCmd("get-pull-request --pull-request-id 3"):                                             {stdout: pullRequestJSON("3", "OPEN", "other", "main", false)},
+	})
+
+	pr, err := h.FindPR(context.Background(), "feature/codecommit", "main")
+	if pr != nil || err == nil {
+		t.Fatalf("FindPR() = (%+v, %v), want ambiguity error and no pull request", pr, err)
+	}
+	for _, want := range []string{"12", "7", "close the extra pull requests", "one remains open for the branch"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("FindPR() error = %q, want it to mention %q", err, want)
+		}
+	}
+	if got := fake.keys(); len(got) != 4 {
+		t.Fatalf("FindPR() commands = %q, want list followed by every open pull request", got)
 	}
 }
 

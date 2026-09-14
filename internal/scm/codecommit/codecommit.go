@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -240,18 +239,12 @@ func (h *Host) FindPR(ctx context.Context, branch, base string) (*scm.PR, error)
 	if list.PullRequestIDs == nil {
 		return nil, errors.New("aws codecommit list-pull-requests: parse response: expected pullRequestIds array")
 	}
-	ids, err := newestFirst(list.PullRequestIDs)
-	if err != nil {
+	if err := validatePullRequestIDs(list.PullRequestIDs); err != nil {
 		return nil, fmt.Errorf("aws codecommit list-pull-requests: parse response: %w", err)
 	}
-	// list-pull-requests returns only IDs and cannot filter by branch, so open
-	// pull requests are read one at a time until one matches: one aws process
-	// per open pull request in the worst case. CodeCommit does not stop two
-	// open pull requests from sharing a source branch; reading the highest ID
-	// first makes the most recently created one win, and usually matches the
-	// run's own pull request after a single read.
 	base = strings.TrimSpace(base)
-	for _, id := range ids {
+	matches := make([]*pullRequest, 0, 1)
+	for _, id := range list.PullRequestIDs {
 		got, err := h.getPullRequest(ctx, id)
 		if err != nil {
 			return nil, err
@@ -264,24 +257,29 @@ func (h *Host) FindPR(ctx context.Context, branch, base string) (*scm.PR, error)
 		if base != "" && branchName(target.DestinationReference) != base {
 			continue
 		}
-		return h.toPR(ctx, got)
+		matches = append(matches, got)
 	}
-	return nil, nil
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	if len(matches) == 1 {
+		return h.toPR(ctx, matches[0])
+	}
+	ids := make([]string, len(matches))
+	for i, match := range matches {
+		ids[i] = match.PullRequestID
+	}
+	return nil, fmt.Errorf("multiple open pull requests match branch %q: %s; close the extra pull requests so one remains open for the branch", branch, strings.Join(ids, ", "))
 }
 
-// newestFirst validates listed pull request IDs and orders them highest first.
-func newestFirst(ids []string) ([]string, error) {
-	numbers := make(map[string]int, len(ids))
+func validatePullRequestIDs(ids []string) error {
 	for i, id := range ids {
 		n, err := strconv.Atoi(id)
 		if err != nil || n <= 0 {
-			return nil, fmt.Errorf("entry %d: invalid pullRequestId %q", i, id)
+			return fmt.Errorf("entry %d: invalid pullRequestId %q", i, id)
 		}
-		numbers[id] = n
 	}
-	sorted := append([]string(nil), ids...)
-	sort.Slice(sorted, func(i, j int) bool { return numbers[sorted[i]] > numbers[sorted[j]] })
-	return sorted, nil
+	return nil
 }
 
 func (h *Host) CreatePR(ctx context.Context, branch, base string, content scm.PRContent) (*scm.PR, error) {
