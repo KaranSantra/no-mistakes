@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -28,6 +29,7 @@ import (
 	"github.com/kunchenguid/no-mistakes/internal/procreap"
 	"github.com/kunchenguid/no-mistakes/internal/runenv"
 	"github.com/kunchenguid/no-mistakes/internal/safeurl"
+	"github.com/kunchenguid/no-mistakes/internal/scm/codecommit"
 	"github.com/kunchenguid/no-mistakes/internal/telemetry"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 	"github.com/kunchenguid/no-mistakes/internal/worktrees"
@@ -1199,13 +1201,16 @@ func (m *RunManager) startRunWithIntentSourceLocked(ctx context.Context, repo *d
 		trackStartFailure("daemon_shutdown")
 		return "", fmt.Errorf("daemon is shutting down")
 	}
-	// Best-effort only: a clone's remotes may change after init. Refresh the
-	// registered URLs before constructing any run-owned Git operation, but keep
-	// the exact prior repo value and continue when discovery, validation, or the
-	// atomic database replacement fails. The reason is deliberately bounded and
-	// URL-free so neither credentials nor sensitive remote material reach logs.
+	// A clone's remotes may change after init. Ordinary refresh failures remain
+	// best-effort, while a refused CodeCommit origin aborts before the prior
+	// registration can be used. Reasons are bounded and URL-free.
 	if refreshed, _, refreshErr := gate.RefreshRepoURLs(ctx, m.db, repo); refreshErr != nil {
-		slog.Warn("repository URL refresh skipped; continuing with existing registration", "repo_id", repo.ID, "reason", gate.ReasonForRefreshFailure(refreshErr))
+		reason := gate.ReasonForRefreshFailure(refreshErr)
+		if reason == gate.RefreshUnsupportedCodeCommit {
+			trackStartFailure("unsupported_codecommit_remote")
+			return "", errors.New(codecommit.UnsupportedRemoteReason)
+		}
+		slog.Warn("repository URL refresh skipped; continuing with existing registration", "repo_id", repo.ID, "reason", reason)
 	} else {
 		repo = refreshed
 	}

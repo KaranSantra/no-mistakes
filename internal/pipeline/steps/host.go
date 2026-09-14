@@ -186,7 +186,7 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 	}
 }
 
-const codeCommitProfileRequiredReason = "AWS CodeCommit requires an explicit AWS profile; re-point the remote with `git remote set-url origin codecommit::<region>://<profile>@<repository>`"
+const codeCommitProfileRequiredReason = codecommit.UnsupportedRemoteReason
 
 // BuildHostForTest exposes buildHost to tests in other packages.
 func BuildHostForTest(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, string) {

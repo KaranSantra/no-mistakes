@@ -37,7 +37,7 @@ Safest local verification sequence after non-trivial changes:
 
 **AWS CodeCommit Backend (`internal/scm/codecommit`)**
 
-- Shells out to AWS CLI v2 (`aws codecommit`), not an AWS SDK. Every command carries `--output json --no-cli-pager`, `--profile`, and `--region` from the sole supported origin form: `codecommit::<region>://<profile>@<repository>`. Command execution itself refuses an empty profile.
+- Shells out to AWS CLI v2 (`aws codecommit`), not an AWS SDK. Every command carries `--output json --no-cli-pager --no-cli-auto-prompt`, `--profile`, and `--region` from the sole supported origin form: `codecommit::<region>://<profile>@<repository>`. Command execution itself refuses an empty profile.
 - `Host.Available` owns the profile- and repository-scoped authentication probe; the generic `scm.AuthConfigured` path deliberately has no profileless CodeCommit command. Expired-SSO guidance quotes the selected profile in `aws sso login --profile ...`.
 - Exactly one remote spelling is supported and the others are refused on purpose. The opaque form survives URL persistence and target fingerprinting with its account-selecting profile intact; the hierarchical `codecommit://` form loses URL userinfo under redaction. Refusing it matches the account-binding rule without teaching security-sensitive custody and routing code a new URL shape, and users can switch with one `git remote set-url`. Profileless opaque helpers, hierarchical helpers, HTTPS, SSH, alias-resolved, and console-only URLs remain detectable as CodeCommit but return the actionable opaque-remote refusal.
 - Run-start URL refresh accepts and persists the opaque form, so a changed region, profile, or repository becomes the run target instead of leaving a stale registration.

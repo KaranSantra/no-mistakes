@@ -53,6 +53,40 @@ func TestRefreshRepoURLsRefreshesOpaqueCodeCommitTarget(t *testing.T) {
 	}
 }
 
+func TestRefreshRepoURLsRejectsUnsupportedCodeCommitOrigins(t *testing.T) {
+	const registered = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	for _, tc := range []struct {
+		name   string
+		origin string
+	}{
+		{name: "hierarchical helper", origin: "codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client"},
+		{name: "profileless opaque helper", origin: "codecommit::us-east-1://Example-Payments-Client"},
+		{name: "HTTPS endpoint", origin: "https://git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client"},
+		{name: "SSH endpoint", origin: "ssh://SSHKEYID@git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, workDir := refreshFixture(t, registered, "")
+			gitTestCmd(t, workDir, "remote", "add", "origin", tc.origin)
+			before, _ := database.GetRepoByPath(workDir)
+
+			_, _, err := RefreshRepoURLs(context.Background(), database, before)
+			if err == nil {
+				t.Fatal("expected refresh refusal")
+			}
+			if got := ReasonForRefreshFailure(err); got != RefreshUnsupportedCodeCommit {
+				t.Fatalf("reason = %q, want %q", got, RefreshUnsupportedCodeCommit)
+			}
+			after, getErr := database.GetRepo(before.ID)
+			if getErr != nil {
+				t.Fatal(getErr)
+			}
+			if *after != *before {
+				t.Fatalf("registration changed on refusal: before %+v after %+v", before, after)
+			}
+		})
+	}
+}
+
 func TestRefreshRepoURLsRefreshesUpstreamAndForkTogether(t *testing.T) {
 	ctx := context.Background()
 	database, workDir := refreshFixture(t, "git@github.com:parent/project.git", "git@github.com:fork/project.git")
@@ -139,14 +173,6 @@ func TestRefreshRepoURLsFailurePreservesExactRegistration(t *testing.T) {
 			origin: "git@example.com:owner/project.git",
 			addRemotes: func(t *testing.T, dir string) {
 				gitTestCmd(t, dir, "remote", "add", "origin", "https://user:secret@example.com/owner/project.git")
-			},
-			wantReason: RefreshInvalidRemote,
-		},
-		{
-			name:   "hierarchical CodeCommit origin",
-			origin: "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client",
-			addRemotes: func(t *testing.T, dir string) {
-				gitTestCmd(t, dir, "remote", "add", "origin", "codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client")
 			},
 			wantReason: RefreshInvalidRemote,
 		},

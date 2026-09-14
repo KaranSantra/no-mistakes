@@ -9,6 +9,8 @@ import (
 // helperScheme prefixes every git-remote-codecommit remote URL.
 const helperScheme = "codecommit:"
 
+const UnsupportedRemoteReason = "AWS CodeCommit requires an explicit AWS profile; re-point the remote with `git remote set-url origin codecommit::<region>://<profile>@<repository>`"
+
 // repositoryNamePattern is CodeCommit's documented repository-name constraint.
 var repositoryNamePattern = regexp.MustCompile(`^[\w.-]{1,100}$`)
 

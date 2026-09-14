@@ -119,11 +119,10 @@ func (h *Host) Capabilities() scm.Capabilities {
 	return scm.Capabilities{MergeableState: false, FailedCheckLogs: false, MergedProof: true}
 }
 
-// globalArgs pins every command to JSON on stdout, whatever output format or
-// pager the user's AWS CLI configuration selects, and to the profile and region
-// the remote URL names.
+// globalArgs pins every command to JSON on stdout without a pager or interactive
+// auto-prompt, and to the profile and region the remote URL names.
 func (h *Host) globalArgs() []string {
-	args := []string{"--output", "json", "--no-cli-pager"}
+	args := []string{"--output", "json", "--no-cli-pager", "--no-cli-auto-prompt"}
 	if h.profile != "" {
 		args = append(args, "--profile", h.profile)
 	}

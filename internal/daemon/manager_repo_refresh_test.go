@@ -12,6 +12,7 @@ import (
 	"github.com/kunchenguid/no-mistakes/internal/git"
 	"github.com/kunchenguid/no-mistakes/internal/paths"
 	"github.com/kunchenguid/no-mistakes/internal/pipeline"
+	"github.com/kunchenguid/no-mistakes/internal/scm/codecommit"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
@@ -175,6 +176,47 @@ func TestRunStartURLRefreshFailuresWarnSafelyAndContinueWithOldRegistration(t *t
 				strings.TrimSpace(warning),
 			)
 		})
+	}
+}
+
+func TestRunStartFailsClosedWhenCloneMovesToUnsupportedCodeCommitRemote(t *testing.T) {
+	t.Setenv("NM_DEMO", "1")
+	p, database := newRefreshRunFixture(t)
+	repo, head := setupTestGitRepo(t, p, database, "codecommit-refused-refresh")
+	const registered = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	var err error
+	repo, err = database.ReplaceRepoURLs(repo.ID, registered, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo.WorkingPath, "remote", "add", "origin", "codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client")
+
+	seen := make(chan *db.Repo, 1)
+	manager := NewRunManager(database, p, func() []pipeline.Step {
+		return []pipeline.Step{&captureRefreshRepoStep{seen: seen}}
+	})
+	t.Cleanup(manager.Shutdown)
+	runID, err := manager.startRun(context.Background(), repo, "main", head, refreshTestZeroSHA, "test", nil, "refuse unsupported CodeCommit origin", "")
+	if err == nil || err.Error() != codecommit.UnsupportedRemoteReason {
+		t.Fatalf("start run = (%q, %v), want exact CodeCommit refusal", runID, err)
+	}
+	if runID != "" {
+		t.Fatalf("run ID = %q, want no run", runID)
+	}
+	if active, getErr := database.GetActiveRun(repo.ID, "main"); getErr != nil || active != nil {
+		t.Fatalf("active run = %+v, %v; want none", active, getErr)
+	}
+	select {
+	case got := <-seen:
+		t.Fatalf("pipeline executed with repository %+v", got)
+	default:
+	}
+	stored, err := database.GetRepo(repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.UpstreamURL != registered {
+		t.Fatalf("stored upstream = %q, want unchanged %q", stored.UpstreamURL, registered)
 	}
 }
 

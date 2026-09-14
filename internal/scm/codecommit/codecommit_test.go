@@ -27,7 +27,7 @@ const (
 // awsCmd is the invocation key for `aws codecommit <args>` carrying the test
 // host's profile and region scope.
 func awsCmd(args string) string {
-	return "aws codecommit " + args + " --output json --no-cli-pager --profile " + testProfile + " --region " + testRegion
+	return "aws codecommit " + args + " --output json --no-cli-pager --no-cli-auto-prompt --profile " + testProfile + " --region " + testRegion
 }
 
 func pullRequestJSON(id, status, source, destination string, merged bool) string {
@@ -109,7 +109,7 @@ func TestAvailableSafelyQuotesProfileInSSORemedy(t *testing.T) {
 	t.Parallel()
 
 	profile := "AWSAdministratorAccess-123456789012'quoted;$HOME"
-	command := "aws codecommit get-repository --repository-name " + testRepo + " --output json --no-cli-pager --profile " + profile + " --region " + testRegion
+	command := "aws codecommit get-repository --repository-name " + testRepo + " --output json --no-cli-pager --no-cli-auto-prompt --profile " + profile + " --region " + testRegion
 	fake := &fakeAWS{responses: map[string]awsTestResponse{
 		command: {stderr: "token expired", code: 255},
 	}}
@@ -241,7 +241,7 @@ func TestFindPRRejectsIndeterminateResponses(t *testing.T) {
 func TestFindPRReadsConsoleRegionFromRepositoryARN(t *testing.T) {
 	t.Parallel()
 
-	scope := " --output json --no-cli-pager --profile " + testProfile
+	scope := " --output json --no-cli-pager --no-cli-auto-prompt --profile " + testProfile
 	fake := &fakeAWS{responses: map[string]awsTestResponse{
 		"aws codecommit list-pull-requests --repository-name " + testRepo + " --pull-request-status OPEN" + scope: {stdout: `{"pullRequestIds":["4"]}`},
 		"aws codecommit get-pull-request --pull-request-id 4" + scope:                                             {stdout: pullRequestJSON("4", "OPEN", "feature/codecommit", "main", false)},
