@@ -24,16 +24,16 @@ var regionPattern = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
 //
 //	codecommit::{region}://[{profile}@]{repository}
 //	codecommit://[{profile}@]{repository}
-//	https://git-codecommit.{region}.amazonaws.com/v1/repos/{repository}
-//	ssh://[{ssh-key-id}@]git-codecommit.{region}.amazonaws.com/v1/repos/{repository}
-//	https://{region}.console.aws.amazon.com/codesuite/codecommit/repositories/{repository}/pull-requests/{id}
+//	https://git-codecommit.{region}.{git-domain}/v1/repos/{repository}
+//	ssh://[{ssh-key-id}@]git-codecommit.{region}.{git-domain}/v1/repos/{repository}
+//	https://{region}.{console-domain}/codesuite/codecommit/repositories/{repository}/pull-requests/{id}
 //
 // The first two are git-remote-codecommit URLs, where the profile is an AWS CLI
 // profile name rather than a credential. The Git endpoints also match their
-// FIPS variant (git-codecommit-fips.{region}) and scp-like SSH syntax. region
-// and profile are empty when the URL does not name them; the AWS CLI then
-// resolves them from its own configuration (AWS_PROFILE, AWS_REGION,
-// ~/.aws/config), exactly as git-remote-codecommit does for the same remote.
+// FIPS variant (git-codecommit-fips.{region}) and scp-like SSH syntax. The Git
+// domain is amazonaws.com in the standard and GovCloud partitions and
+// amazonaws.com.cn in China. region and profile are empty when the URL does not
+// name them.
 func ParseRemote(remote string) (region, profile, repo string, ok bool) {
 	return ResolveRemote(remote, "")
 }
@@ -130,8 +130,7 @@ func parseHelperRemote(rest string) (region, profile, repo string, ok bool) {
 	return region, profile, repo, true
 }
 
-// gitHostRegion returns the region a CodeCommit Git endpoint serves:
-// git-codecommit.{region}.amazonaws.com or its git-codecommit-fips variant.
+// gitHostRegion returns the region a CodeCommit Git endpoint serves.
 func gitHostRegion(host string) (string, bool) {
 	rest, found := strings.CutPrefix(host, "git-codecommit.")
 	if !found {
@@ -140,8 +139,13 @@ func gitHostRegion(host string) (string, bool) {
 	if !found {
 		return "", false
 	}
-	region, found := strings.CutSuffix(rest, ".amazonaws.com")
-	return region, found && regionPattern.MatchString(region)
+	domain := "amazonaws.com"
+	region, found := strings.CutSuffix(rest, "."+domain)
+	if !found {
+		domain = "amazonaws.com.cn"
+		region, found = strings.CutSuffix(rest, "."+domain)
+	}
+	return region, found && regionPattern.MatchString(region) && gitDomain(region) == domain
 }
 
 // parseConsoleURL extracts the region and repository from a CodeCommit console
@@ -171,10 +175,20 @@ func parseConsoleURL(u *url.URL) (region, repo string, ok bool) {
 // region belongs to. Both publish regional console endpoints
 // ({region}.{domain}).
 func consoleDomain(region string) string {
+	if strings.HasPrefix(region, "cn-") {
+		return "console.amazonaws.cn"
+	}
 	if strings.HasPrefix(region, "us-gov-") {
 		return "console.amazonaws-us-gov.com"
 	}
 	return "console.aws.amazon.com"
+}
+
+func gitDomain(region string) string {
+	if strings.HasPrefix(region, "cn-") {
+		return "amazonaws.com.cn"
+	}
+	return "amazonaws.com"
 }
 
 func splitDecodePath(p string) []string {

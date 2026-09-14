@@ -17,25 +17,31 @@ import (
 const codeCommitTestProfile = "AWSAdministratorAccess-123456789012"
 
 func TestBuildHost_CodeCommit(t *testing.T) {
-	sctx := &pipeline.StepContext{
-		Ctx:     context.Background(),
-		WorkDir: t.TempDir(),
-		Run:     &db.Run{Branch: "feature/codecommit"},
-		Repo: &db.Repo{
-			UpstreamURL:   "codecommit::us-east-1://" + codeCommitTestProfile + "@Example-Payments-Client",
-			DefaultBranch: "main",
-		},
-	}
-
-	if got := resolvedProvider(sctx); got != scm.ProviderCodeCommit {
-		t.Fatalf("resolvedProvider() = %q, want %q", got, scm.ProviderCodeCommit)
-	}
-	host, reason := buildHost(sctx, scm.ProviderCodeCommit)
-	if host == nil || reason != "" {
-		t.Fatalf("buildHost() = (%v, %q), want CodeCommit host", host, reason)
-	}
-	if host.Provider() != scm.ProviderCodeCommit {
-		t.Fatalf("Provider() = %q, want %q", host.Provider(), scm.ProviderCodeCommit)
+	for _, remote := range []string{
+		"codecommit::us-east-1://" + codeCommitTestProfile + "@Example-Payments-Client",
+		"codecommit://" + codeCommitTestProfile + "@Example-Payments-Client",
+	} {
+		t.Run(remote, func(t *testing.T) {
+			sctx := &pipeline.StepContext{
+				Ctx:     context.Background(),
+				WorkDir: t.TempDir(),
+				Run:     &db.Run{Branch: "feature/codecommit"},
+				Repo: &db.Repo{
+					UpstreamURL:   remote,
+					DefaultBranch: "main",
+				},
+			}
+			if got := resolvedProvider(sctx); got != scm.ProviderCodeCommit {
+				t.Fatalf("resolvedProvider() = %q, want %q", got, scm.ProviderCodeCommit)
+			}
+			host, reason := buildHost(sctx, scm.ProviderCodeCommit)
+			if host == nil || reason != "" {
+				t.Fatalf("buildHost() = (%v, %q), want CodeCommit host", host, reason)
+			}
+			if host.Provider() != scm.ProviderCodeCommit {
+				t.Fatalf("Provider() = %q, want %q", host.Provider(), scm.ProviderCodeCommit)
+			}
+		})
 	}
 }
 
@@ -88,20 +94,33 @@ func TestBuildHost_CodeCommitUsesProfileFromWorktreeOrigin(t *testing.T) {
 	}
 }
 
-func TestBuildHost_CodeCommitFallsBackToPRURL(t *testing.T) {
+func TestBuildHost_CodeCommitRefusesProfilelessRemoteForms(t *testing.T) {
 	prURL := "https://eu-west-2.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42"
-	sctx := &pipeline.StepContext{
-		Ctx:     context.Background(),
-		WorkDir: t.TempDir(),
-		Run:     &db.Run{Branch: "feature/codecommit", PRURL: &prURL},
-		Repo:    &db.Repo{DefaultBranch: "main"},
-	}
-
-	if got := resolvedProvider(sctx); got != scm.ProviderCodeCommit {
-		t.Fatalf("resolvedProvider() = %q, want %q", got, scm.ProviderCodeCommit)
-	}
-	if host, reason := buildHost(sctx, scm.ProviderCodeCommit); host == nil || reason != "" {
-		t.Fatalf("buildHost() = (%v, %q), want CodeCommit host from the PR URL", host, reason)
+	for _, tc := range []struct {
+		name   string
+		remote string
+		prURL  *string
+	}{
+		{name: "HTTPS endpoint", remote: "https://git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client"},
+		{name: "SSH endpoint", remote: "ssh://SSHKEYID@git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client"},
+		{name: "helper without profile", remote: "codecommit::us-east-1://Example-Payments-Client"},
+		{name: "console PR URL fallback", prURL: &prURL},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sctx := &pipeline.StepContext{
+				Ctx:     context.Background(),
+				WorkDir: t.TempDir(),
+				Run:     &db.Run{Branch: "feature/codecommit", PRURL: tc.prURL},
+				Repo:    &db.Repo{UpstreamURL: tc.remote, DefaultBranch: "main"},
+			}
+			if got := resolvedProvider(sctx); got != scm.ProviderCodeCommit {
+				t.Fatalf("resolvedProvider() = %q, want %q", got, scm.ProviderCodeCommit)
+			}
+			host, reason := buildHost(sctx, scm.ProviderCodeCommit)
+			if host != nil || reason != codeCommitProfileRequiredReason {
+				t.Fatalf("buildHost() = (%v, %q), want (nil, %q)", host, reason, codeCommitProfileRequiredReason)
+			}
+		})
 	}
 }
 
@@ -114,8 +133,8 @@ func TestBuildHost_CodeCommitSkipsUnroutableRepositories(t *testing.T) {
 		{
 			name: "fork routing",
 			repo: &db.Repo{
-				UpstreamURL: "codecommit::us-east-1://Example-Payments-Client",
-				ForkURL:     "codecommit::us-east-1://Example-Payments-Fork",
+				UpstreamURL: "codecommit::us-east-1://" + codeCommitTestProfile + "@Example-Payments-Client",
+				ForkURL:     "codecommit::us-east-1://" + codeCommitTestProfile + "@Example-Payments-Client",
 			},
 			wantReason: "fork",
 		},
@@ -123,7 +142,7 @@ func TestBuildHost_CodeCommitSkipsUnroutableRepositories(t *testing.T) {
 			// The worktree has no origin to recover the profile from.
 			name:       "redacted profile",
 			repo:       &db.Repo{UpstreamURL: "codecommit://" + safeurl.RedactedUserinfo + "@Example-Payments-Client"},
-			wantReason: "redacted",
+			wantReason: "explicit AWS profile",
 		},
 		{
 			name:       "unparseable remote",

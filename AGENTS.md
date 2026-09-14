@@ -37,12 +37,13 @@ Safest local verification sequence after non-trivial changes:
 
 **AWS CodeCommit Backend (`internal/scm/codecommit`)**
 
-- Shells out to AWS CLI v2 (`aws codecommit`), not an AWS SDK. Every command carries `--output json --no-cli-pager` plus only the `--profile`/`--region` the remote names; anything unnamed is left to the AWS CLI's own resolution.
-- `buildHost` parses `resolveUpstreamURL(sctx)`, never `Repo.UpstreamURL`: `safeurl.Redact` rewrites the profile in `codecommit://<profile>@<repo>` to `redacted` (the `codecommit::<region>://` form is opaque to `url.Parse` and survives), and the profile selects the credentials.
+- Shells out to AWS CLI v2 (`aws codecommit`), not an AWS SDK. Every command carries `--output json --no-cli-pager` and the explicit `--profile` from a profile-bearing git-remote-codecommit origin; `--region` is included when the remote names it. Command execution itself refuses an empty profile.
+- `buildHost` parses `resolveUpstreamURL(sctx)`, never `Repo.UpstreamURL`: `safeurl.Redact` rewrites the profile in `codecommit://<profile>@<repo>` to `redacted` (the `codecommit::<region>://` form is opaque to `url.Parse` and survives), and the profile selects the credentials. Profileless helper, HTTPS, SSH, alias-resolved, redacted-without-origin, and console-only URLs remain detectable as CodeCommit but return the actionable profile-bearing-remote refusal; a console PR URL is never an identity fallback.
 - Writes pass an ASCII-escaped request document through `--cli-input-json file://`: the `--targets` shorthand splits a branch name on commas, and the CLI decodes local files in the locale encoding.
-- The PR URL is the regional console URL ending in the PR ID. Runs persist only that URL and `scm.ExtractPRNumber` reads its last segment, so a `?region=` query or `/details` suffix breaks CI resume.
+- The PR URL is the partition-aware regional console URL ending in the PR ID, including `console.amazonaws.cn` for China. Runs persist only that URL and `scm.ExtractPRNumber` reads its last segment, so a `?region=` query or `/details` suffix breaks CI resume.
+- Merged state is head-bound: `GetMergedProof` reads the pull request target's `sourceCommit`, compares it with the run head even after merge, and returns `scm.ErrHeadChanged` on a mismatch.
 - CodeCommit has no checks API: `GetChecks` returns an empty list, never `ErrUnsupported` (which the CI step counts as a failed poll), so repositories need trusted `no_ci: true` to reach readiness.
-- Regressions: `internal/scm/codecommit/*_test.go`, `TestBuildHost_CodeCommitUsesProfileFromWorktreeOrigin`, `TestDetectProvider_CodeCommit`, `TestWebPRURLRoundTripsThroughRunRecovery`.
+- Regressions: `internal/scm/codecommit/*_test.go`, `TestBuildHost_CodeCommitUsesProfileFromWorktreeOrigin`, `TestBuildHost_CodeCommitRefusesProfilelessRemoteForms`, `TestDetectProvider_CodeCommit`, `TestWebPRURLRoundTripsThroughRunRecovery`.
 
 **GitHub user-attachments (`internal/scm/github/attachments.go`)**
 

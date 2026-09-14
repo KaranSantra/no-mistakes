@@ -15,11 +15,13 @@ import (
 )
 
 const (
-	testRegion  = "us-east-1"
-	testProfile = "AWSAdministratorAccess-123456789012"
-	testRepo    = "Example-Payments-Client"
-	testARN     = "arn:aws:codecommit:us-east-1:123456789012:Example-Payments-Client"
-	testPRURL   = "https://us-east-1.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/"
+	testRegion   = "us-east-1"
+	testProfile  = "AWSAdministratorAccess-123456789012"
+	testRepo     = "Example-Payments-Client"
+	testARN      = "arn:aws:codecommit:us-east-1:123456789012:Example-Payments-Client"
+	testPRURL    = "https://us-east-1.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/"
+	testHeadSHA  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	testMergeSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
 // awsCmd is the invocation key for `aws codecommit <args>` carrying the test
@@ -29,8 +31,12 @@ func awsCmd(args string) string {
 }
 
 func pullRequestJSON(id, status, source, destination string, merged bool) string {
-	return fmt.Sprintf(`{"pullRequest":{"pullRequestId":%q,"title":"Add CodeCommit support","description":"body","pullRequestStatus":%q,"pullRequestTargets":[{"repositoryName":%q,"sourceReference":"refs/heads/%s","destinationReference":"refs/heads/%s","mergeMetadata":{"isMerged":%t}}]}}`,
-		id, status, testRepo, source, destination, merged)
+	mergeCommit := ""
+	if merged {
+		mergeCommit = testMergeSHA
+	}
+	return fmt.Sprintf(`{"pullRequest":{"pullRequestId":%q,"title":"Add CodeCommit support","description":"body","pullRequestStatus":%q,"pullRequestTargets":[{"repositoryName":%q,"sourceReference":"refs/heads/%s","destinationReference":"refs/heads/%s","sourceCommit":%q,"mergeMetadata":{"isMerged":%t,"mergeCommitId":%q}}]}}`,
+		id, status, testRepo, source, destination, testHeadSHA, merged, mergeCommit)
 }
 
 func repositoryJSON(arn string) string {
@@ -49,8 +55,8 @@ func TestProviderAndCapabilities(t *testing.T) {
 	if h.Provider() != scm.ProviderCodeCommit {
 		t.Fatalf("Provider() = %q, want %q", h.Provider(), scm.ProviderCodeCommit)
 	}
-	if caps := h.Capabilities(); caps.MergeableState || caps.FailedCheckLogs {
-		t.Fatalf("Capabilities() = %+v, want no mergeability or failed-check logs", caps)
+	if caps := h.Capabilities(); caps.MergeableState || caps.FailedCheckLogs || !caps.MergedProof {
+		t.Fatalf("Capabilities() = %+v, want merged proof without mergeability or failed-check logs", caps)
 	}
 }
 
@@ -99,15 +105,17 @@ func TestAvailableReportsUnreadableRepository(t *testing.T) {
 	}
 }
 
-func TestCommandsLeaveUnnamedProfileAndRegionToAWSCLI(t *testing.T) {
+func TestCommandsRefuseUnnamedProfile(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeAWS{responses: map[string]awsTestResponse{
-		"aws codecommit get-repository --repository-name " + testRepo + " --output json --no-cli-pager": {stdout: repositoryJSON(testARN)},
-	}}
+	fake := &fakeAWS{}
 	h := New(fake.cmdFactory(), func() bool { return true }, "", "", testRepo)
-	if err := h.Available(context.Background()); err != nil {
-		t.Fatalf("Available() error = %v, want nil", err)
+	err := h.Available(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "requires an explicit AWS profile") {
+		t.Fatalf("Available() error = %v, want explicit-profile refusal", err)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("Available() ran %d commands with no profile", len(fake.calls))
 	}
 }
 
@@ -373,6 +381,41 @@ func TestGetPRStateNormalizesLifecycle(t *testing.T) {
 			t.Fatalf("GetPRState(%s, merged=%v) = (%q, %v), want %q", tc.status, tc.merged, got, err, tc.want)
 		}
 	}
+}
+
+func TestGetMergedProofBindsMergedStateToExpectedHead(t *testing.T) {
+	t.Parallel()
+
+	t.Run("matching merged head", func(t *testing.T) {
+		h, _ := newTestHost(map[string]awsTestResponse{
+			awsCmd("get-pull-request --pull-request-id 21"): {stdout: pullRequestJSON("21", "CLOSED", "feature", "main", true)},
+		})
+		proof, err := h.GetMergedProof(context.Background(), &scm.PR{Number: "21", URL: testPRURL + "21"}, testHeadSHA)
+		want := scm.MergedProof{Merged: true, Number: "21", URL: testPRURL + "21", HeadSHA: testHeadSHA, MergeCommitSHA: testMergeSHA}
+		if err != nil || proof != want {
+			t.Fatalf("GetMergedProof() = (%+v, %v), want (%+v, nil)", proof, err, want)
+		}
+	})
+
+	t.Run("mismatched merged head", func(t *testing.T) {
+		h, _ := newTestHost(map[string]awsTestResponse{
+			awsCmd("get-pull-request --pull-request-id 21"): {stdout: pullRequestJSON("21", "CLOSED", "feature", "main", true)},
+		})
+		_, err := h.GetMergedProof(context.Background(), &scm.PR{Number: "21", URL: testPRURL + "21"}, "cccccccccccccccccccccccccccccccccccccccc")
+		if !errors.Is(err, scm.ErrHeadChanged) {
+			t.Fatalf("GetMergedProof() error = %v, want ErrHeadChanged", err)
+		}
+	})
+
+	t.Run("matching unmerged head", func(t *testing.T) {
+		h, _ := newTestHost(map[string]awsTestResponse{
+			awsCmd("get-pull-request --pull-request-id 21"): {stdout: pullRequestJSON("21", "OPEN", "feature", "main", false)},
+		})
+		proof, err := h.GetMergedProof(context.Background(), &scm.PR{Number: "21", URL: testPRURL + "21"}, testHeadSHA)
+		if err != nil || proof.Merged || proof.HeadSHA != testHeadSHA || proof.Number != "21" || proof.URL != testPRURL+"21" {
+			t.Fatalf("GetMergedProof() = (%+v, %v), want matching unmerged proof", proof, err)
+		}
+	})
 }
 
 func TestOptionalOperationsReportNoChecksAndUnsupported(t *testing.T) {

@@ -181,23 +181,27 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 		// remote to a placeholder, and the profile selects the credentials.
 		remote := resolveUpstreamURL(sctx)
 		region, profile, repo, ok := codecommit.ResolveRemote(remote, scm.ResolveHost(sctx.Ctx, remote))
-		if ok && profile == safeurl.RedactedUserinfo {
-			// resolveUpstreamURL fell back to the stored, redacted URL; running
-			// under a profile literally named after the placeholder would only
-			// surface later as a misleading credentials failure.
-			return nil, "could not recover the AWS profile of the redacted CodeCommit remote URL from the worktree's origin"
+		if ok && profile == "" {
+			return nil, codeCommitProfileRequiredReason
 		}
 		if !ok && sctx.Run.PRURL != nil {
-			region, profile, repo, ok = codecommit.ParseRemote(*sctx.Run.PRURL)
+			if _, _, _, prOK := codecommit.ParseRemote(*sctx.Run.PRURL); prOK {
+				return nil, codeCommitProfileRequiredReason
+			}
 		}
 		if !ok {
 			return nil, "could not resolve the AWS CodeCommit repository from the remote URL"
+		}
+		if profile == safeurl.RedactedUserinfo {
+			return nil, codeCommitProfileRequiredReason
 		}
 		return codecommit.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, region, profile, repo), ""
 	default:
 		return nil, fmt.Sprintf("provider %s is not supported yet", provider)
 	}
 }
+
+const codeCommitProfileRequiredReason = "AWS CodeCommit requires an explicit AWS profile; re-point the remote with `git remote set-url origin codecommit::<region>://<profile>@<repository>`"
 
 // BuildHostForTest exposes buildHost to tests in other packages.
 func BuildHostForTest(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, string) {

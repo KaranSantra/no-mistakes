@@ -58,7 +58,9 @@ func TestDetectProvider_CodeCommit(t *testing.T) {
 		{"https://git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client", ProviderCodeCommit},
 		{"ssh://SSHKEYID@git-codecommit.eu-west-2.amazonaws.com/v1/repos/Example-Payments-Client", ProviderCodeCommit},
 		{"https://git-codecommit-fips.us-gov-west-1.amazonaws.com/v1/repos/Example-Payments-Client", ProviderCodeCommit},
+		{"https://git-codecommit.cn-north-1.amazonaws.com.cn/v1/repos/Example-Payments-Client", ProviderCodeCommit},
 		{"https://us-east-1.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42", ProviderCodeCommit},
+		{"https://cn-north-1.console.amazonaws.cn/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42", ProviderCodeCommit},
 		// A helper URL has no host, and its repository name can look like
 		// another provider's host.
 		{"codecommit::us-east-1://github.com", ProviderCodeCommit},

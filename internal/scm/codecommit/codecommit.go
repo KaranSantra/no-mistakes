@@ -2,10 +2,10 @@
 // commands.
 //
 // No AWS credentials pass through no-mistakes. Every command carries the
-// --profile and --region the repository's remote URL names - the values
-// git-remote-codecommit pushes with - and leaves anything the URL omits to the
-// AWS CLI's own resolution (AWS_PROFILE, AWS_REGION, ~/.aws/config), so SSO,
-// assumed-role, and static-key profiles all work unchanged.
+// --profile the repository's remote URL names and the --region when it names
+// one. Region resolution may remain in the selected profile, but an unnamed
+// profile is refused so Git and PR operations cannot silently use different
+// AWS identities.
 //
 // CodeCommit has neither a check/status API for pull requests nor a stored
 // pull request merge status, so GetChecks reports no checks and mergeability
@@ -86,7 +86,7 @@ type Host struct {
 	cmd          CmdFactory
 	cliAvailable func() bool
 	region       string // AWS region named by the remote; empty defers to the AWS CLI
-	profile      string // AWS CLI profile named by the remote; empty defers to the AWS CLI
+	profile      string // AWS CLI profile named by the remote
 	repo         string // repository name
 
 	mu               sync.Mutex
@@ -95,9 +95,8 @@ type Host struct {
 
 // New builds a Host. cliAvailable reports whether the aws binary is resolvable
 // on the caller's PATH. region and profile are the values the remote URL names
-// (see ParseRemote); either may be empty, in which case commands omit that flag
-// and the AWS CLI resolves it from its own configuration. repo names the
-// repository every command is scoped to.
+// (see ParseRemote); region may be empty and resolve through the selected
+// profile. repo names the repository every command is scoped to.
 func New(cmd CmdFactory, cliAvailable func() bool, region, profile, repo string) *Host {
 	return &Host{
 		cmd:          cmd,
@@ -115,7 +114,7 @@ func (h *Host) Provider() scm.Provider { return scm.ProviderCodeCommit }
 // get-merge-conflicts evaluation per merge strategy. Failed-check logs do not
 // apply because GetChecks reports no checks.
 func (h *Host) Capabilities() scm.Capabilities {
-	return scm.Capabilities{MergeableState: false, FailedCheckLogs: false}
+	return scm.Capabilities{MergeableState: false, FailedCheckLogs: false, MergedProof: true}
 }
 
 // globalArgs pins every command to JSON on stdout, whatever output format or
@@ -135,6 +134,9 @@ func (h *Host) globalArgs() []string {
 // run executes `aws codecommit <args>` scoped by globalArgs and returns its
 // JSON stdout.
 func (h *Host) run(ctx context.Context, args ...string) ([]byte, error) {
+	if h.profile == "" {
+		return nil, errors.New("AWS CodeCommit requires an explicit AWS profile")
+	}
 	argv := append([]string{"codecommit"}, args...)
 	argv = append(argv, h.globalArgs()...)
 	return outputJSON(h.cmd(ctx, "aws", argv...))
@@ -331,6 +333,36 @@ func (h *Host) GetPRState(ctx context.Context, pr *scm.PR) (scm.PRState, error) 
 		return "", err
 	}
 	return normalizePRState(got), nil
+}
+
+func (h *Host) GetMergedProof(ctx context.Context, pr *scm.PR, expectedHead string) (scm.MergedProof, error) {
+	expectedHead = strings.TrimSpace(expectedHead)
+	if expectedHead == "" {
+		return scm.MergedProof{}, errors.New("AWS CodeCommit merged proof requires an expected head SHA")
+	}
+	got, err := h.showPR(ctx, pr)
+	if err != nil {
+		return scm.MergedProof{}, err
+	}
+	target := got.Targets[0]
+	head := strings.TrimSpace(target.SourceCommit)
+	if head == "" {
+		return scm.MergedProof{}, errors.New("aws codecommit get-pull-request: missing sourceCommit")
+	}
+	if head != expectedHead {
+		return scm.MergedProof{}, fmt.Errorf("%w: AWS CodeCommit reported %s, expected %s", scm.ErrHeadChanged, head, expectedHead)
+	}
+	canonical, err := h.toPR(ctx, got)
+	if err != nil {
+		return scm.MergedProof{}, err
+	}
+	return scm.MergedProof{
+		Merged:         target.MergeMetadata.IsMerged,
+		Number:         canonical.Number,
+		URL:            canonical.URL,
+		HeadSHA:        head,
+		MergeCommitSHA: strings.TrimSpace(target.MergeMetadata.MergeCommitID),
+	}, nil
 }
 
 // GetChecks reports no checks: CodeCommit has no check or status API for pull

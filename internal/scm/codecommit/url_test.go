@@ -81,6 +81,13 @@ func TestParseRemote(t *testing.T) {
 			wantOK:     true,
 		},
 		{
+			name:       "China endpoint",
+			in:         "https://git-codecommit.cn-north-1.amazonaws.com.cn/v1/repos/Example-Payments-Client",
+			wantRegion: "cn-north-1",
+			wantRepo:   "Example-Payments-Client",
+			wantOK:     true,
+		},
+		{
 			name:       "console pull request url",
 			in:         "https://us-east-1.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42",
 			wantRegion: "us-east-1",
@@ -91,6 +98,13 @@ func TestParseRemote(t *testing.T) {
 			name:       "global console url with region query",
 			in:         "https://console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42/details?region=eu-west-1",
 			wantRegion: "eu-west-1",
+			wantRepo:   "Example-Payments-Client",
+			wantOK:     true,
+		},
+		{
+			name:       "China console pull request url",
+			in:         "https://cn-north-1.console.amazonaws.cn/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42",
+			wantRegion: "cn-north-1",
 			wantRepo:   "Example-Payments-Client",
 			wantOK:     true,
 		},
@@ -107,6 +121,8 @@ func TestParseRemote(t *testing.T) {
 		{name: "http endpoint", in: "http://git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client"},
 		{name: "endpoint without repos path", in: "https://git-codecommit.us-east-1.amazonaws.com/v1/Example-Payments-Client"},
 		{name: "lookalike endpoint host", in: "https://git-codecommit.us-east-1.amazonaws.com.example.test/v1/repos/Example-Payments-Client"},
+		{name: "China suffix with commercial region", in: "https://git-codecommit.us-east-1.amazonaws.com.cn/v1/repos/Example-Payments-Client"},
+		{name: "commercial suffix with China region", in: "https://git-codecommit.cn-north-1.amazonaws.com/v1/repos/Example-Payments-Client"},
 		{name: "console url for another service", in: "https://us-east-1.console.aws.amazon.com/ec2/home"},
 		{name: "console region from another partition", in: "https://us-gov-west-1.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42"},
 		{name: "scp remote on an ssh host named codecommit", in: "codecommit:v1/repos/Example-Payments-Client"},
@@ -147,7 +163,7 @@ func TestResolveRemoteUsesSSHAliasHost(t *testing.T) {
 func TestWebPRURLRoundTripsThroughRunRecovery(t *testing.T) {
 	t.Parallel()
 
-	for _, region := range []string{"us-east-1", "us-gov-west-1"} {
+	for _, region := range []string{"us-east-1", "us-gov-west-1", "cn-north-1"} {
 		prURL := webPRURL(region, "Example-Payments-Client", "42")
 		if got := scm.DetectProviderStaticContext(t.Context(), prURL); got != scm.ProviderCodeCommit {
 			t.Fatalf("DetectProviderStaticContext(%q) = %q, want %q", prURL, got, scm.ProviderCodeCommit)

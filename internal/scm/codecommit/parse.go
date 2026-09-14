@@ -49,8 +49,10 @@ type pullRequestTarget struct {
 	RepositoryName       string `json:"repositoryName"`
 	SourceReference      string `json:"sourceReference"`      // refs/heads/{branch}
 	DestinationReference string `json:"destinationReference"` // refs/heads/{branch}
+	SourceCommit         string `json:"sourceCommit"`
 	MergeMetadata        struct {
-		IsMerged bool `json:"isMerged"`
+		IsMerged      bool   `json:"isMerged"`
+		MergeCommitID string `json:"mergeCommitId"`
 	} `json:"mergeMetadata"`
 }
 

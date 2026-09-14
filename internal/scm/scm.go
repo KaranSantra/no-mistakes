@@ -165,7 +165,7 @@ func isCodeCommitRemote(remote string) bool {
 	if !strings.Contains(lower, "/codesuite/codecommit/") {
 		return false
 	}
-	for _, domain := range []string{"console.aws.amazon.com", "console.amazonaws-us-gov.com"} {
+	for _, domain := range []string{"console.aws.amazon.com", "console.amazonaws-us-gov.com", "console.amazonaws.cn"} {
 		if host == domain || strings.HasSuffix(host, "."+domain) {
 			return true
 		}
@@ -174,12 +174,13 @@ func isCodeCommitRemote(remote string) bool {
 }
 
 // isCodeCommitGitHost reports whether host is a CodeCommit Git endpoint:
-// git-codecommit.{region}.amazonaws.com or its git-codecommit-fips variant.
+// git-codecommit.{region}.amazonaws.com, its China partition suffix, or the
+// git-codecommit-fips variant.
 func isCodeCommitGitHost(host string) bool {
 	if !strings.HasPrefix(host, "git-codecommit.") && !strings.HasPrefix(host, "git-codecommit-fips.") {
 		return false
 	}
-	return strings.HasSuffix(host, ".amazonaws.com")
+	return strings.HasSuffix(host, ".amazonaws.com") || strings.HasSuffix(host, ".amazonaws.com.cn")
 }
 
 func detectLegacyProviderHost(host string) Provider {
