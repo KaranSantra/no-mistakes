@@ -314,7 +314,7 @@ Monitors PR health after creation and auto-fixes CI failures. Mergeability polli
 - Bitbucket Cloud requires `NO_MISTAKES_BITBUCKET_EMAIL` and `NO_MISTAKES_BITBUCKET_API_TOKEN`.
 - Azure DevOps requires the `az` CLI with the `azure-devops` extension, authenticated with a PAT.
 - Gitea requires `tea` CLI, installed with a login configured for the instance.
-- AWS CodeCommit requires the `aws` CLI v2 with credentials for the remote's profile. CodeCommit reports no checks, so a repository without a trusted `no_ci: true` waits for checks until `ci_timeout`.
+- AWS CodeCommit requires the `aws` CLI v2 with credentials for the remote's profile and the separately installed `git-remote-codecommit` helper for its supported origin transport. CodeCommit reports no checks, so a repository without a trusted `no_ci: true` waits for checks until `ci_timeout`.
 
 **Behavior:**
 

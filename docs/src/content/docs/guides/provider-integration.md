@@ -28,7 +28,7 @@ What you do not get is PR automation and CI monitoring.
 
 | Step | GitHub | GitLab | Forgejo | Bitbucket Cloud | Azure DevOps | Gitea | AWS CodeCommit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **PR** (create/update) | `gh` CLI, authenticated | `glab` CLI, authenticated | `forgejo-axi`, authenticated | `NO_MISTAKES_BITBUCKET_EMAIL` + `NO_MISTAKES_BITBUCKET_API_TOKEN` | `az` CLI + `azure-devops` extension, authenticated | `tea` CLI, authenticated | `aws` CLI v2, authenticated |
+| **PR** (create/update) | `gh` CLI, authenticated | `glab` CLI, authenticated | `forgejo-axi`, authenticated | `NO_MISTAKES_BITBUCKET_EMAIL` + `NO_MISTAKES_BITBUCKET_API_TOKEN` | `az` CLI + `azure-devops` extension, authenticated | `tea` CLI, authenticated | `aws` CLI v2 + `git-remote-codecommit`, authenticated |
 | **CI** (polling, auto-fix) | `gh` CLI | `glab` CLI | `forgejo-axi` | same env vars | `az` CLI | `tea` CLI | PR state only (no checks API) |
 | **Merge conflict auto-fix** | `gh` CLI | `glab` CLI | `forgejo-axi` | not supported | `az` CLI | not supported | not supported |
 | **Mergeability polling** | `gh` CLI | `glab` CLI | `forgejo-axi` | not supported | `az` CLI | not supported | not supported |
@@ -261,18 +261,21 @@ Because `tea` infers "which instance" from the current directory's git remote - 
 
 ## AWS CodeCommit
 
-AWS CodeCommit uses the AWS CLI, version 2. Install it and configure the
-profile your remote uses:
+AWS CodeCommit uses the AWS CLI, version 2, plus the separately installed
+[`git-remote-codecommit`](https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-git-remote-codecommit.html)
+transport helper. Install both, then configure the profile your remote uses:
 
 ```sh
 # see https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+# see https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-git-remote-codecommit.html
+
+pip install git-remote-codecommit
 
 aws configure sso   # or `aws configure` for access keys
 ```
 
 `no-mistakes` never handles AWS credentials itself. Exactly one
-[git-remote-codecommit](https://github.com/aws/git-remote-codecommit) remote
-spelling is supported:
+`git-remote-codecommit` remote spelling is supported:
 
 - `codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client`
 

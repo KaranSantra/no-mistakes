@@ -44,6 +44,20 @@ func refreshFailure(reason RefreshFailureReason) error {
 	return &repoURLRefreshError{reason: reason}
 }
 
+var getRefreshRemoteURLs = git.GetConfiguredRemoteURLs
+
+func hasUnsupportedCodeCommitRemote(ctx context.Context, remotes []string) bool {
+	for _, remote := range remotes {
+		if _, _, _, ok := codecommit.ParseSupportedRemote(remote); ok {
+			continue
+		}
+		if scm.DetectProviderStaticContext(ctx, remote) == scm.ProviderCodeCommit {
+			return true
+		}
+	}
+	return false
+}
+
 // RefreshRepoURLs best-effort discovers the current registered targets from
 // the working clone and atomically replaces both URL fields. Origin remains the
 // authoritative upstream source. An existing fork is refreshed only when one
@@ -57,7 +71,10 @@ func RefreshRepoURLs(ctx context.Context, database *db.DB, repo *db.Repo) (*db.R
 		return nil, false, refreshFailure(RefreshRemoteUnreadable)
 	}
 
-	originURLs, err := git.GetConfiguredRemoteURLs(ctx, repo.WorkingPath, "origin")
+	originURLs, err := getRefreshRemoteURLs(ctx, repo.WorkingPath, "origin")
+	if hasUnsupportedCodeCommitRemote(ctx, originURLs) {
+		return nil, false, refreshFailure(RefreshUnsupportedCodeCommit)
+	}
 	if err != nil || len(originURLs) == 0 {
 		return nil, false, refreshFailure(RefreshRemoteUnreadable)
 	}
@@ -65,9 +82,6 @@ func RefreshRepoURLs(ctx context.Context, database *db.DB, repo *db.Repo) (*db.R
 		return nil, false, refreshFailure(RefreshAmbiguousRemote)
 	}
 	upstreamURL := originURLs[0]
-	if _, _, _, ok := codecommit.ParseSupportedRemote(upstreamURL); !ok && scm.DetectProviderStaticContext(ctx, upstreamURL) == scm.ProviderCodeCommit {
-		return nil, false, refreshFailure(RefreshUnsupportedCodeCommit)
-	}
 	upstream, err := inspectRefreshRemote(upstreamURL)
 	if err != nil {
 		return nil, false, refreshFailure(RefreshInvalidRemote)
@@ -92,7 +106,7 @@ func RefreshRepoURLs(ctx context.Context, database *db.DB, repo *db.Repo) (*db.R
 			if name == "origin" || name == RemoteName {
 				continue
 			}
-			candidateURLs, readErr := git.GetConfiguredRemoteURLs(ctx, repo.WorkingPath, name)
+			candidateURLs, readErr := getRefreshRemoteURLs(ctx, repo.WorkingPath, name)
 			if readErr != nil || len(candidateURLs) == 0 {
 				return nil, false, refreshFailure(RefreshRemoteUnreadable)
 			}
@@ -121,7 +135,7 @@ func RefreshRepoURLs(ctx context.Context, database *db.DB, repo *db.Repo) (*db.R
 		// Re-read the selected fork source immediately before replacement. A
 		// concurrent git-config edit makes the source ambiguous rather than
 		// allowing a mixed snapshot into the registry.
-		confirmed, confirmErr := git.GetConfiguredRemoteURLs(ctx, repo.WorkingPath, candidates[0].name)
+		confirmed, confirmErr := getRefreshRemoteURLs(ctx, repo.WorkingPath, candidates[0].name)
 		if confirmErr != nil || len(confirmed) != 1 || confirmed[0] != forkURL {
 			return nil, false, refreshFailure(RefreshAmbiguousRemote)
 		}
@@ -129,7 +143,10 @@ func RefreshRepoURLs(ctx context.Context, database *db.DB, repo *db.Repo) (*db.R
 
 	// Re-read origin at the replacement boundary for the same reason. This is
 	// still read-only and does not alter clone configuration.
-	confirmedOrigin, confirmErr := git.GetConfiguredRemoteURLs(ctx, repo.WorkingPath, "origin")
+	confirmedOrigin, confirmErr := getRefreshRemoteURLs(ctx, repo.WorkingPath, "origin")
+	if hasUnsupportedCodeCommitRemote(ctx, confirmedOrigin) {
+		return nil, false, refreshFailure(RefreshUnsupportedCodeCommit)
+	}
 	if confirmErr != nil || len(confirmedOrigin) != 1 || confirmedOrigin[0] != upstream.raw {
 		return nil, false, refreshFailure(RefreshAmbiguousRemote)
 	}
