@@ -49,7 +49,8 @@ func DetectProviderContext(ctx context.Context, remoteURL string) Provider {
 // DetectProviderWithForgejoBaseURL detects a provider while allowing an
 // explicit forgejo-axi base URL to identify an otherwise-unrecognizable
 // self-hosted Forgejo origin. Known hosted providers keep precedence so a
-// stray Forgejo setting cannot reroute GitHub, GitLab, Bitbucket, or Azure.
+// stray Forgejo setting cannot reroute GitHub, GitLab, Bitbucket, Azure, or
+// AWS CodeCommit.
 func DetectProviderWithForgejoBaseURL(remoteURL, forgejoBaseURL string) Provider {
 	return DetectProviderContextWithForgejoBaseURL(context.Background(), remoteURL, forgejoBaseURL)
 }
