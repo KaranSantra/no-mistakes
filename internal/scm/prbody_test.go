@@ -11,6 +11,9 @@ func TestMaxPRBodyChars(t *testing.T) {
 	if got := MaxPRBodyChars(ProviderAzureDevOps); got != 4000 {
 		t.Fatalf("MaxPRBodyChars(azuredevops) = %d, want 4000", got)
 	}
+	if got := MaxPRBodyChars(ProviderCodeCommit); got != 10240 {
+		t.Fatalf("MaxPRBodyChars(codecommit) = %d, want 10240", got)
+	}
 	for _, p := range []Provider{ProviderGitHub, ProviderGitLab, ProviderBitbucket, ProviderUnknown} {
 		if got := MaxPRBodyChars(p); got != 0 {
 			t.Fatalf("MaxPRBodyChars(%s) = %d, want 0 (unlimited)", p, got)

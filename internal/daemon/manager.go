@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kunchenguid/no-mistakes/internal/agent"
+	"github.com/kunchenguid/no-mistakes/internal/branchsync"
 	"github.com/kunchenguid/no-mistakes/internal/config"
 	"github.com/kunchenguid/no-mistakes/internal/custody"
 	"github.com/kunchenguid/no-mistakes/internal/db"
@@ -28,6 +30,7 @@ import (
 	"github.com/kunchenguid/no-mistakes/internal/procreap"
 	"github.com/kunchenguid/no-mistakes/internal/runenv"
 	"github.com/kunchenguid/no-mistakes/internal/safeurl"
+	"github.com/kunchenguid/no-mistakes/internal/scm/codecommit"
 	"github.com/kunchenguid/no-mistakes/internal/telemetry"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 	"github.com/kunchenguid/no-mistakes/internal/worktrees"
@@ -878,7 +881,7 @@ func (m *RunManager) startFreshLaunch(ctx context.Context, repo *db.Repo, branch
 		if gateHead != headSHA {
 			return "", fmt.Errorf("launch context drift: gate branch %q is at %s, not requested %s", branch, gateHead, headSHA)
 		}
-		inheritedPRURL := ""
+		var inheritedPRRun *db.Run
 		if baseSHA == "" {
 			runs, err := m.db.GetRunsByRepoHead(repo.ID, branch, headSHA)
 			if err != nil {
@@ -887,10 +890,10 @@ func (m *RunManager) startFreshLaunch(ctx context.Context, repo *db.Repo, branch
 			baseSHA = headSHA
 			if len(runs) > 0 {
 				baseSHA = runs[0].BaseSHA
-				inheritedPRURL = inheritablePRURL(runs[0])
+				inheritedPRRun = runs[0]
 			}
 		}
-		runID, err := m.startRunWithIntentSourceLocked(ctx, repo, branch, headSHA, baseSHA, trigger, skipSteps, persistedIntent, db.RunIntentSourceAgent, launchNonce, validationGeneration, requestDigest, storedPRBaseBranch, inheritedPRURL)
+		runID, err := m.startRunWithIntentSourceLocked(ctx, repo, branch, headSHA, baseSHA, trigger, skipSteps, persistedIntent, db.RunIntentSourceAgent, launchNonce, validationGeneration, requestDigest, storedPRBaseBranch, inheritedPRRun)
 		if err != nil {
 			return "", err
 		}
@@ -1085,11 +1088,14 @@ func (m *RunManager) HandleRerun(ctx context.Context, repoID, branch, previousRu
 	if storedPRBaseBranch == "" && selectedRun.PRBaseBranch != nil {
 		storedPRBaseBranch = strings.TrimSpace(*selectedRun.PRBaseBranch)
 	}
-	return m.startRunWithIntentSource(ctx, repo, branch, headSHA, baseSHA, "rerun", skipSteps, intent, intentSource, storedPRBaseBranch, inheritablePRURL(selectedRun))
+	return m.startRunWithIntentSource(ctx, repo, branch, headSHA, baseSHA, "rerun", skipSteps, intent, intentSource, storedPRBaseBranch, selectedRun)
 }
 
-func inheritablePRURL(run *db.Run) string {
-	if run.PRURL == nil {
+func inheritablePRURL(run *db.Run, repo *db.Repo) string {
+	if run == nil || repo == nil || run.PRURL == nil || run.PushTargetFingerprint == nil {
+		return ""
+	}
+	if *run.PushTargetFingerprint != branchsync.TargetFingerprint(repo.PushURL()) {
 		return ""
 	}
 	state := ""
@@ -1161,15 +1167,15 @@ func fetchRunDefaultBranch(ctx context.Context, workDir string, repo *db.Repo) e
 // A non-empty intent is stamped onto the run as agent-supplied, so the intent
 // step uses it instead of inferring from transcripts.
 func (m *RunManager) startRun(ctx context.Context, repo *db.Repo, branch, headSHA, baseSHA, trigger string, skipSteps []types.StepName, intent, prBaseBranch string) (string, error) {
-	return m.startRunWithIntentSource(ctx, repo, branch, headSHA, baseSHA, trigger, skipSteps, intent, db.RunIntentSourceAgent, prBaseBranch, "")
+	return m.startRunWithIntentSource(ctx, repo, branch, headSHA, baseSHA, trigger, skipSteps, intent, db.RunIntentSourceAgent, prBaseBranch, nil)
 }
 
 // startRunWithIntentSource is the common run-creation path. source is empty
 // when no intent is supplied, RunIntentSourceAgent for a new explicit
 // override, and RunIntentSourceRerun for inherited explicit intent.
-func (m *RunManager) startRunWithIntentSource(ctx context.Context, repo *db.Repo, branch, headSHA, baseSHA, trigger string, skipSteps []types.StepName, intent, source, prBaseBranch, inheritedPRURL string) (string, error) {
+func (m *RunManager) startRunWithIntentSource(ctx context.Context, repo *db.Repo, branch, headSHA, baseSHA, trigger string, skipSteps []types.StepName, intent, source, prBaseBranch string, inheritedPRRun *db.Run) (string, error) {
 	return m.withBranchLock(repo.ID, branch, func() (string, error) {
-		return m.startRunWithIntentSourceLocked(ctx, repo, branch, headSHA, baseSHA, trigger, skipSteps, intent, source, "", "", "", prBaseBranch, inheritedPRURL)
+		return m.startRunWithIntentSourceLocked(ctx, repo, branch, headSHA, baseSHA, trigger, skipSteps, intent, source, "", "", "", prBaseBranch, inheritedPRRun)
 	})
 }
 
@@ -1184,7 +1190,7 @@ func (m *RunManager) withBranchLock(repoID, branch string, action func() (string
 
 // startRunWithIntentSourceLocked performs run creation while the caller owns
 // the repository/branch lock. Proof fields are empty for ordinary launches.
-func (m *RunManager) startRunWithIntentSourceLocked(ctx context.Context, repo *db.Repo, branch, headSHA, baseSHA, trigger string, skipSteps []types.StepName, intent, source, launchNonce, validationGeneration, intentDigest, prBaseBranch, inheritedPRURL string) (string, error) {
+func (m *RunManager) startRunWithIntentSourceLocked(ctx context.Context, repo *db.Repo, branch, headSHA, baseSHA, trigger string, skipSteps []types.StepName, intent, source, launchNonce, validationGeneration, intentDigest, prBaseBranch string, inheritedPRRun *db.Run) (string, error) {
 	branchRole := telemetryBranchRole(branch, repo.DefaultBranch)
 	trackStartFailure := func(stage string) {
 		telemetry.Track("run", telemetry.Fields{
@@ -1199,13 +1205,16 @@ func (m *RunManager) startRunWithIntentSourceLocked(ctx context.Context, repo *d
 		trackStartFailure("daemon_shutdown")
 		return "", fmt.Errorf("daemon is shutting down")
 	}
-	// Best-effort only: a clone's remotes may change after init. Refresh the
-	// registered URLs before constructing any run-owned Git operation, but keep
-	// the exact prior repo value and continue when discovery, validation, or the
-	// atomic database replacement fails. The reason is deliberately bounded and
-	// URL-free so neither credentials nor sensitive remote material reach logs.
+	// A clone's remotes may change after init. Ordinary refresh failures remain
+	// best-effort, while a refused CodeCommit origin aborts before the prior
+	// registration can be used. Reasons are bounded and URL-free.
 	if refreshed, _, refreshErr := gate.RefreshRepoURLs(ctx, m.db, repo); refreshErr != nil {
-		slog.Warn("repository URL refresh skipped; continuing with existing registration", "repo_id", repo.ID, "reason", gate.ReasonForRefreshFailure(refreshErr))
+		reason := gate.ReasonForRefreshFailure(refreshErr)
+		if reason == gate.RefreshUnsupportedCodeCommit {
+			trackStartFailure("unsupported_codecommit_remote")
+			return "", errors.New(codecommit.UnsupportedRemoteReason)
+		}
+		slog.Warn("repository URL refresh skipped; continuing with existing registration", "repo_id", repo.ID, "reason", reason)
 	} else {
 		repo = refreshed
 	}
@@ -1236,7 +1245,7 @@ func (m *RunManager) startRunWithIntentSourceLocked(ctx context.Context, repo *d
 		trackStartFailure("create_run")
 		return "", fmt.Errorf("create run: %w", err)
 	}
-	if inherited := strings.TrimSpace(inheritedPRURL); inherited != "" {
+	if inherited := inheritablePRURL(inheritedPRRun, repo); inherited != "" {
 		if err := m.db.UpdateRunPRURL(run.ID, inherited); err != nil {
 			m.db.UpdateRunError(run.ID, fmt.Sprintf("inherit PR URL: %s", err))
 			trackStartFailure("inherit_pr_url")

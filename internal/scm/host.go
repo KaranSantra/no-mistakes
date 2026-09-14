@@ -19,6 +19,9 @@ func ExtractHost(remote string) string {
 	if s == "" {
 		return ""
 	}
+	if isCodeCommitHelperRemote(s) {
+		return ""
+	}
 	if i := strings.Index(s, "://"); i >= 0 {
 		// URL form: scheme://[user@]host[:port]/path. Split off the path at the
 		// first '/' before scanning for userinfo, so a '@' inside the path
@@ -68,8 +71,8 @@ func stripPort(host string) string {
 
 // ExtractPRNumber returns the trailing numeric segment from a PR/MR URL.
 // Supports GitHub (/pull/N), GitLab (/-/merge_requests/N), Forgejo
-// (/pulls/N), Bitbucket (/pull-requests/N), and Azure DevOps (/pullrequest/N)
-// URLs; all of them end in a digit path segment.
+// (/pulls/N), Bitbucket and AWS CodeCommit console (/pull-requests/N), and
+// Azure DevOps (/pullrequest/N) URLs; all of them end in a digit path segment.
 func ExtractPRNumber(prURL string) (string, error) {
 	trimmed := strings.TrimRight(prURL, "/")
 	parts := strings.Split(trimmed, "/")

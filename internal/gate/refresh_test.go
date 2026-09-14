@@ -30,6 +30,127 @@ func TestRefreshRepoURLsSSHToHTTPS(t *testing.T) {
 	}
 }
 
+func TestRefreshRepoURLsRefreshesOpaqueCodeCommitTarget(t *testing.T) {
+	const registered = "codecommit::us-west-2://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	const current = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	database, workDir := refreshFixture(t, registered, "")
+	gitTestCmd(t, workDir, "remote", "add", "origin", current)
+	repo, _ := database.GetRepoByPath(workDir)
+
+	updated, changed, err := RefreshRepoURLs(context.Background(), database, repo)
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if !changed || !updated.URLsVerified || updated.UpstreamURL != current {
+		t.Fatalf("updated repo = %+v, changed = %t; want verified current CodeCommit target", updated, changed)
+	}
+	persisted, err := database.GetRepo(repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.UpstreamURL != current {
+		t.Fatalf("persisted upstream = %q, want %q", persisted.UpstreamURL, current)
+	}
+}
+
+func TestRefreshRepoURLsRejectsUnsupportedCodeCommitOrigins(t *testing.T) {
+	const registered = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	for _, tc := range []struct {
+		name   string
+		origin string
+	}{
+		{name: "hierarchical helper", origin: "codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client"},
+		{name: "profileless opaque helper", origin: "codecommit::us-east-1://Example-Payments-Client"},
+		{name: "HTTPS endpoint", origin: "https://git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client"},
+		{name: "SSH endpoint", origin: "ssh://SSHKEYID@git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, workDir := refreshFixture(t, registered, "")
+			gitTestCmd(t, workDir, "remote", "add", "origin", tc.origin)
+			before, _ := database.GetRepoByPath(workDir)
+
+			_, _, err := RefreshRepoURLs(context.Background(), database, before)
+			if err == nil {
+				t.Fatal("expected refresh refusal")
+			}
+			if got := ReasonForRefreshFailure(err); got != RefreshUnsupportedCodeCommit {
+				t.Fatalf("reason = %q, want %q", got, RefreshUnsupportedCodeCommit)
+			}
+			after, getErr := database.GetRepo(before.ID)
+			if getErr != nil {
+				t.Fatal(getErr)
+			}
+			if *after != *before {
+				t.Fatalf("registration changed on refusal: before %+v after %+v", before, after)
+			}
+		})
+	}
+}
+
+func TestRefreshRepoURLsRejectsUnsupportedCodeCommitAmongAmbiguousOrigins(t *testing.T) {
+	const registered = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	const refused = "codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	database, workDir := refreshFixture(t, registered, "")
+	gitTestCmd(t, workDir, "remote", "add", "origin", registered)
+	gitTestCmd(t, workDir, "config", "--add", "remote.origin.url", refused)
+	before, _ := database.GetRepoByPath(workDir)
+
+	_, _, err := RefreshRepoURLs(context.Background(), database, before)
+	if err == nil {
+		t.Fatal("expected refresh refusal")
+	}
+	if got := ReasonForRefreshFailure(err); got != RefreshUnsupportedCodeCommit {
+		t.Fatalf("reason = %q, want %q", got, RefreshUnsupportedCodeCommit)
+	}
+	after, getErr := database.GetRepo(before.ID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	if *after != *before {
+		t.Fatalf("registration changed on refusal: before %+v after %+v", before, after)
+	}
+}
+
+func TestRefreshRepoURLsRejectsUnsupportedCodeCommitAtConfirmation(t *testing.T) {
+	const registered = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	const refused = "codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	database, workDir := refreshFixture(t, registered, "")
+	gitTestCmd(t, workDir, "remote", "add", "origin", registered)
+	before, _ := database.GetRepoByPath(workDir)
+
+	original := getRefreshRemoteURLs
+	reads := 0
+	getRefreshRemoteURLs = func(ctx context.Context, dir, name string) ([]string, error) {
+		if name != "origin" {
+			return original(ctx, dir, name)
+		}
+		reads++
+		if reads == 1 {
+			return []string{registered}, nil
+		}
+		return []string{refused}, nil
+	}
+	t.Cleanup(func() { getRefreshRemoteURLs = original })
+
+	_, _, err := RefreshRepoURLs(context.Background(), database, before)
+	if err == nil {
+		t.Fatal("expected refresh refusal")
+	}
+	if got := ReasonForRefreshFailure(err); got != RefreshUnsupportedCodeCommit {
+		t.Fatalf("reason = %q, want %q", got, RefreshUnsupportedCodeCommit)
+	}
+	if reads != 2 {
+		t.Fatalf("origin reads = %d, want initial and confirmation reads", reads)
+	}
+	after, getErr := database.GetRepo(before.ID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	if *after != *before {
+		t.Fatalf("registration changed on refusal: before %+v after %+v", before, after)
+	}
+}
+
 func TestRefreshRepoURLsRefreshesUpstreamAndForkTogether(t *testing.T) {
 	ctx := context.Background()
 	database, workDir := refreshFixture(t, "git@github.com:parent/project.git", "git@github.com:fork/project.git")

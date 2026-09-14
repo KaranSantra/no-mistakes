@@ -114,7 +114,7 @@ func BuildPipelineSummary(steps []*db.StepResult, rounds map[string][]*db.StepRo
 }
 
 // BuildPipelineSummaryFor is BuildPipelineSummary with a host-specific body skin.
-// Unknown, GitHub, GitLab, and Azure stay on today's HTML. Bitbucket Cloud is
+// Every provider except Bitbucket Cloud uses the HTML skin. Bitbucket Cloud is
 // no-HTML markdown: no attestation comment, no <details>.
 func BuildPipelineSummaryFor(steps []*db.StepResult, rounds map[string][]*db.StepRound, headSHA string, provider scm.Provider) (string, string) {
 	return buildPipelineSummaryFor(steps, rounds, headSHA, provider, pipelineAttestationPolicy{})

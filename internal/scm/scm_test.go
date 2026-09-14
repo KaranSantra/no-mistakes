@@ -42,6 +42,43 @@ func TestDetectProvider(t *testing.T) {
 	}
 }
 
+func TestDetectProvider_CodeCommit(t *testing.T) {
+	t.Setenv("GLAB_CONFIG_DIR", t.TempDir())
+	t.Setenv("GH_CONFIG_DIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	tests := []struct {
+		url  string
+		want Provider
+	}{
+		{"codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client", ProviderCodeCommit},
+		{"codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client", ProviderCodeCommit},
+		{"codecommit://redacted@Example-Payments-Client", ProviderCodeCommit},
+		{"codecommit://Example-Payments-Client", ProviderCodeCommit},
+		{"https://git-codecommit.us-east-1.amazonaws.com/v1/repos/Example-Payments-Client", ProviderCodeCommit},
+		{"ssh://SSHKEYID@git-codecommit.eu-west-2.amazonaws.com/v1/repos/Example-Payments-Client", ProviderCodeCommit},
+		{"https://git-codecommit-fips.us-gov-west-1.amazonaws.com/v1/repos/Example-Payments-Client", ProviderCodeCommit},
+		{"https://git-codecommit.cn-north-1.amazonaws.com.cn/v1/repos/Example-Payments-Client", ProviderCodeCommit},
+		{"https://us-east-1.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42", ProviderCodeCommit},
+		{"https://cn-north-1.console.amazonaws.cn/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42", ProviderCodeCommit},
+		// A helper URL has no host, and its repository name can look like
+		// another provider's host.
+		{"codecommit::us-east-1://github.com", ProviderCodeCommit},
+		{"codecommit://forgejo", ProviderCodeCommit},
+		{"https://us-east-1.console.aws.amazon.com/ec2/home", ProviderUnknown},
+		{"https://git-codecommit.example.com/v1/repos/Example-Payments-Client", ProviderUnknown},
+	}
+
+	for _, tt := range tests {
+		if got := DetectProvider(tt.url); got != tt.want {
+			t.Errorf("DetectProvider(%q) = %q, want %q", tt.url, got, tt.want)
+		}
+		if got := DetectProviderStaticContext(context.Background(), tt.url); got != tt.want {
+			t.Errorf("DetectProviderStaticContext(%q) = %q, want %q", tt.url, got, tt.want)
+		}
+	}
+}
+
 func TestDetectProvider_SSHHostAlias(t *testing.T) {
 	t.Setenv("GLAB_CONFIG_DIR", t.TempDir())
 	t.Setenv("GH_CONFIG_DIR", t.TempDir())
@@ -71,6 +108,12 @@ func TestDetectProvider_SSHHostAlias(t *testing.T) {
 			url:      "git@forgejo-github:owner/repo.git",
 			hostname: "github.com",
 			want:     ProviderGitHub,
+		},
+		{
+			name:     "CodeCommit SSH alias",
+			url:      "ssh://codecommit-work/v1/repos/Example-Payments-Client",
+			hostname: "git-codecommit.us-east-1.amazonaws.com",
+			want:     ProviderCodeCommit,
 		},
 	}
 

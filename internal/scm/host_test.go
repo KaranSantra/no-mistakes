@@ -20,6 +20,8 @@ func TestExtractHost(t *testing.T) {
 		{"ssh url with port", "ssh://git@code.example.com:2222/group/repo.git", "code.example.com"},
 		{"https userinfo and port", "https://user:token@code.example.com:8443/group/repo.git", "code.example.com"},
 		{"git protocol", "git://code.example.com/group/repo.git", "code.example.com"},
+		{"CodeCommit regional helper", "codecommit::us-east-1://AWSAdministratorAccess-123456789012@github.com", ""},
+		{"CodeCommit default helper", "codecommit://AWSAdministratorAccess-123456789012@github.com", ""},
 		{"mixed case lowercased", "https://CODE.Example.COM/group/repo", "code.example.com"},
 		{"ipv6 literal with port", "ssh://git@[::1]:22/group/repo.git", "[::1]"},
 		// A '@' inside the path must not be mistaken for a "user@" userinfo

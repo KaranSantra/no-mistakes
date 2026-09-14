@@ -222,7 +222,7 @@ An empty value is valid and means "fall back to the forge default branch"; a non
 
 ### pr.template
 
-Use a repository Markdown template for the public narrative, followed by no-mistakes' protected evidence appendix. Supported on **GitHub, GitLab, Gitea, Forgejo, Azure DevOps, and Bitbucket Cloud**, using each backend's authenticated raw-description transport. Forgejo requires `forgejo-axi` with the raw `api` command (contract verified against 1.3.0); an older CLI without it fails rather than using a preview. Self-hosted instances use the existing provider routing.
+Use a repository Markdown template for the public narrative, followed by no-mistakes' protected evidence appendix. Supported on **GitHub, GitLab, Gitea, Forgejo, Azure DevOps, Bitbucket Cloud, and AWS CodeCommit**, using each backend's authenticated raw-description transport. Forgejo requires `forgejo-axi` with the raw `api` command (contract verified against 1.3.0); an older CLI without it fails rather than using a preview. Self-hosted instances use the existing provider routing.
 
 | | |
 | --- | --- |
@@ -266,7 +266,7 @@ If the complete author text, closing references and rendered evidence cannot fit
 
 Unconfigured, unowned descriptions retain ordinary narrative/fallback/size behavior; existing owned bodies retain author-safe updates even after the setting is removed. Providers without a raw content contract reject configured templates.
 
-**Provider caveats:** Azure DevOps' 4,000-character budget is checked conservatively in UTF-16 units before every owned write, including pre-push/CI-repair restamping. Oversize fails; ordinary Azure truncation must never cut an ownership marker or author evidence. The 16 KiB source-template allowance does not imply a filled Azure description will fit. Bitbucket keeps Markdown evidence (no HTML folds) and carries the exact existing attestation in a visible text code fence; ownership comments may also be visible. Ordinary, unowned Bitbucket descriptions still omit attestation. These are presentation differences, not a new attestation protocol. The bundled enforcement action remains GitHub-specific; no native enforcement workflow for other providers is installed.
+**Provider caveats:** Azure DevOps' 4,000-character budget and AWS CodeCommit's 10,240-character budget are checked conservatively in UTF-16 units before every owned write, including pre-push/CI-repair restamping. Oversize fails; ordinary provider truncation must never cut an ownership marker or author evidence. The 16 KiB source-template allowance does not imply a filled description will fit either provider. Bitbucket keeps Markdown evidence (no HTML folds) and carries the exact existing attestation in a visible text code fence; ownership comments may also be visible. Ordinary, unowned Bitbucket descriptions still omit attestation. These are presentation differences, not a new attestation protocol. The bundled enforcement action remains GitHub-specific; no native enforcement workflow for other providers is installed.
 
 Provider contract tests use fake CLI/API responses and local HTTP fixtures, not live server acceptance. Exact server byte roundtrips, rendering, consistency and instance-specific limits remain unverified; a differing body readback fails visibly rather than being normalized into success.
 
@@ -624,7 +624,7 @@ Answering that gate with `fix` is still honored: the fix round you asked for rep
 
 Reruns are skipped when:
 
-- The provider has no rerun API (only GitHub implements one today; GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, and Gitea reach the approval gate without a rerun).
+- The provider has no rerun API (only GitHub implements one today; GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, Gitea, and AWS CodeCommit reach the approval gate without a rerun).
 - The check's details link names nothing the provider can re-run, for example a third-party status pointing at an external dashboard, or a link under a workflow run that names no job the API accepts. A link naming one job re-runs that job; a cancelled check naming only the workflow run re-runs the whole workflow, while other run-only links re-run failed jobs; an unrecognized link is widened into neither.
 - The published branch head no longer equals the commit the run delivered. That case terminates with the expected and observed commits instead: re-running checks against a different head would certify a revision this run never produced. See [pipeline steps: CI](/no-mistakes/reference/pipeline-steps/#ci).
 

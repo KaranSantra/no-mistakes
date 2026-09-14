@@ -12,6 +12,7 @@ import (
 	"github.com/kunchenguid/no-mistakes/internal/pipeline"
 	"github.com/kunchenguid/no-mistakes/internal/scm"
 	"github.com/kunchenguid/no-mistakes/internal/scm/azuredevops"
+	"github.com/kunchenguid/no-mistakes/internal/scm/codecommit"
 	"github.com/kunchenguid/no-mistakes/internal/scm/forgejo"
 	"github.com/kunchenguid/no-mistakes/internal/scm/gitea"
 	"github.com/kunchenguid/no-mistakes/internal/scm/github"
@@ -167,10 +168,25 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 		// from Host.Available instead of failing host construction outright.
 		login := scm.ResolveGiteaLogin(host)
 		return gitea.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, host, login, repoSlug), ""
+	case scm.ProviderCodeCommit:
+		if sctx.Repo.ForkURL != "" {
+			// Fork PR routing for CodeCommit is intentionally not half-wired,
+			// mirroring the other non-GitHub providers; a CodeCommit pull
+			// request cannot span repositories at all.
+			return nil, "fork PR routing for AWS CodeCommit is not implemented"
+		}
+		remote := resolveUpstreamURL(sctx)
+		region, profile, repo, ok := codecommit.ParseSupportedRemote(remote)
+		if !ok {
+			return nil, codeCommitProfileRequiredReason
+		}
+		return codecommit.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, region, profile, repo), ""
 	default:
 		return nil, fmt.Sprintf("provider %s is not supported yet", provider)
 	}
 }
+
+const codeCommitProfileRequiredReason = codecommit.UnsupportedRemoteReason
 
 // BuildHostForTest exposes buildHost to tests in other packages.
 func BuildHostForTest(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, string) {

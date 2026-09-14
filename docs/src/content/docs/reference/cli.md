@@ -186,7 +186,7 @@ The nonce is scoped to the repository and branch.
 The first successful receipt claim returns `created`; subsequent matching claims return `reused` for that same run, including after the gate or pipeline head advances.
 A conflicting submitted head, validation generation, or intent is refused.
 A different nonce creates a distinct run rather than reattaching to a same-head run; both post-receive creation and the up-to-date-push fallback follow this contract.
-The up-to-date-push fallback preserves the latest same-head run's PR URL unless its recorded PR state is closed or merged, including when an explicit `--base-branch` retargets that PR.
+The up-to-date-push fallback preserves the latest same-head run's PR URL only when its recorded PR state is still live and its recorded push target matches the refreshed repository push target, including when an explicit `--base-branch` retargets that PR. Legacy runs without a target binding do not inherit.
 An explicit `--base-branch` is persisted on creation and must match the stored per-run base on replay; omitting it on replay preserves the stored base.
 A conflicting claim does not consume the first `created` disposition.
 Without the two proof flags, ordinary reattachment is unchanged, and historical runs without a nonce are not adopted into a proof binding.
@@ -538,9 +538,9 @@ The standalone runner rows inspect default binary names; the `cursor` row report
 The [Global Config Reference](/no-mistakes/reference/global-config/) owns ACP gate-validation availability and probing semantics.
 Each validation run performs the authoritative agent resolution again after applying any trusted repository-level override.
 
-`doctor` checks `gh` and `az` availability. [Provider Integration](/no-mistakes/guides/provider-integration/) owns the separate setup checks for GitLab, Forgejo, Bitbucket Cloud, Gitea, and the Azure DevOps extension and PAT.
+`doctor` checks `gh` and `az` availability. [Provider Integration](/no-mistakes/guides/provider-integration/) owns the separate setup checks for GitLab, Forgejo, Bitbucket Cloud, Gitea, AWS CodeCommit, and the Azure DevOps extension and PAT.
 
-`tea` stays docs-only like `glab`, `forgejo-axi`, and Bitbucket's env vars, rather than an active `doctor` check like `gh`/`az`: Gitea is almost always self-hosted, so a bare "`tea` not found" row would be a near-universal, low-value warning for the vast majority of users who have no Gitea instance at all.
+`tea` and `aws` stay docs-only like `glab`, `forgejo-axi`, and Bitbucket's env vars, rather than active `doctor` checks like `gh`/`az`: Gitea is almost always self-hosted and the AWS CLI is only needed for CodeCommit, so a bare "not found" row for either would be a near-universal, low-value warning for the vast majority of users who use neither.
 
 ## no-mistakes update
 
