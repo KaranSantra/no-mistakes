@@ -93,6 +93,8 @@ type Host struct {
 	repositoryRegion string // region from the repository ARN, recorded by getRepository
 }
 
+var _ scm.PRBaseBranchReader = (*Host)(nil)
+
 // New builds a Host. cliAvailable reports whether the aws binary is resolvable
 // on the caller's PATH. region and profile are the values the remote URL names
 // (see ParseRemote); region may be empty and resolve through the selected
@@ -206,9 +208,13 @@ func (h *Host) Available(ctx context.Context) error {
 	// SSO session or a profile without access to the repository is reported
 	// before publication starts.
 	if err := h.getRepository(ctx); err != nil {
-		return fmt.Errorf("aws CLI cannot read CodeCommit repository %q%s (for an expired SSO session, run `aws sso login`): %w", h.repo, h.scopeDescription(), err)
+		return fmt.Errorf("aws CLI cannot read CodeCommit repository %q%s (for an expired SSO session, run `aws sso login --profile %s`): %w", h.repo, h.scopeDescription(), shellSingleQuote(h.profile), err)
 	}
 	return nil
+}
+
+func shellSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func (h *Host) scopeDescription() string {
@@ -333,6 +339,14 @@ func (h *Host) GetPRState(ctx context.Context, pr *scm.PR) (scm.PRState, error) 
 		return "", err
 	}
 	return normalizePRState(got), nil
+}
+
+func (h *Host) GetPRBaseBranch(ctx context.Context, pr *scm.PR) (string, error) {
+	got, err := h.showPR(ctx, pr)
+	if err != nil {
+		return "", err
+	}
+	return branchName(got.Targets[0].DestinationReference), nil
 }
 
 func (h *Host) GetMergedProof(ctx context.Context, pr *scm.PR, expectedHead string) (scm.MergedProof, error) {

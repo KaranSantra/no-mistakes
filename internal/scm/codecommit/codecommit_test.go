@@ -98,10 +98,26 @@ func TestAvailableReportsUnreadableRepository(t *testing.T) {
 	if err == nil {
 		t.Fatal("Available() error = nil, want unreadable repository error")
 	}
-	for _, want := range []string{testRepo, "profile " + testProfile, "region " + testRegion, "aws sso login"} {
+	for _, want := range []string{testRepo, "profile " + testProfile, "region " + testRegion, "aws sso login --profile '" + testProfile + "'"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Available() error = %q, want it to mention %q", err, want)
 		}
+	}
+}
+
+func TestAvailableSafelyQuotesProfileInSSORemedy(t *testing.T) {
+	t.Parallel()
+
+	profile := "AWSAdministratorAccess-123456789012'quoted;$HOME"
+	command := "aws codecommit get-repository --repository-name " + testRepo + " --output json --no-cli-pager --profile " + profile + " --region " + testRegion
+	fake := &fakeAWS{responses: map[string]awsTestResponse{
+		command: {stderr: "token expired", code: 255},
+	}}
+	h := New(fake.cmdFactory(), func() bool { return true }, testRegion, profile, testRepo)
+	err := h.Available(context.Background())
+	want := `aws sso login --profile 'AWSAdministratorAccess-123456789012'"'"'quoted;$HOME'`
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("Available() error = %q, want safely quoted remedy %q", err, want)
 	}
 }
 
@@ -383,6 +399,18 @@ func TestGetPRStateNormalizesLifecycle(t *testing.T) {
 		if err != nil || got != tc.want {
 			t.Fatalf("GetPRState(%s, merged=%v) = (%q, %v), want %q", tc.status, tc.merged, got, err, tc.want)
 		}
+	}
+}
+
+func TestGetPRBaseBranchReadsLiveDestination(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTestHost(map[string]awsTestResponse{
+		awsCmd("get-pull-request --pull-request-id 21"): {stdout: pullRequestJSON("21", "OPEN", "feature", "release", false)},
+	})
+	base, err := h.GetPRBaseBranch(context.Background(), &scm.PR{Number: "21"})
+	if err != nil || base != "release" {
+		t.Fatalf("GetPRBaseBranch() = (%q, %v), want (release, nil)", base, err)
 	}
 }
 

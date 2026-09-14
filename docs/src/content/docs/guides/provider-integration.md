@@ -300,7 +300,8 @@ The identity needs `codecommit:GetRepository`, `ListPullRequests`,
 `GetPullRequest`, `CreatePullRequest`, `UpdatePullRequestDescription`, and
 `UpdatePullRequestTitle` on the repository. The PR step first reads the
 repository with that profile, so an expired SSO session skips the step with a
-reminder to run `aws sso login`.
+reminder to run
+`aws sso login --profile 'AWSAdministratorAccess-123456789012'`.
 
 **What you get:**
 
@@ -361,7 +362,7 @@ Everything before push (rebase, review, test, document, lint) still works regard
 no-mistakes doctor
 ```
 
-`doctor` checks `gh` and `az` availability. It also validates every configured forge profile, including its provider config, target host, and online authentication. Without profiles, confirm `glab` is installed and authenticated for GitLab. For Forgejo, run `FORGEJO_BASE_URL=<host> forgejo-axi status --json` from the daemon's environment. For Bitbucket Cloud, confirm the two env vars are set in that environment. For Azure DevOps, confirm the `azure-devops` extension is installed (`az extension show --name azure-devops`) and a PAT is available. For Gitea, confirm `tea` is installed and has a login configured for your instance (`tea logins list`). For AWS CodeCommit, confirm `aws codecommit get-repository --repository-name <repo> --profile <profile> --region <region>` succeeds from the daemon's environment.
+`doctor` checks `gh` and `az` availability. It also validates every configured forge profile, including its provider config, target host, and online authentication. Without profiles, confirm `glab` is installed and authenticated for GitLab. For Forgejo, run `FORGEJO_BASE_URL=<host> forgejo-axi status --json` from the daemon's environment. For Bitbucket Cloud, confirm the two env vars are set in that environment. For Azure DevOps, confirm the `azure-devops` extension is installed (`az extension show --name azure-devops`) and a PAT is available. For Gitea, confirm `tea` is installed and has a login configured for your instance (`tea logins list`). For AWS CodeCommit, confirm `aws codecommit get-repository --repository-name Example-Payments-Client --profile AWSAdministratorAccess-123456789012 --region us-east-1` succeeds from the daemon's environment.
 
 :::note
 Provider CLIs and credentials inherit the daemon's startup environment. If credentials or PATH-derived tools are missing, check `~/.no-mistakes/logs/daemon.log` for a login-shell environment resolution warning, then see [Environment the daemon sees](/no-mistakes/reference/environment/#environment-the-daemon-sees) for the platform-specific resolution and restart behavior.

@@ -8,6 +8,10 @@ import (
 )
 
 func TestAuthCheckCommand(t *testing.T) {
+	if got := ProviderCodeCommit.CLIName(); got != "aws" {
+		t.Fatalf("CodeCommit CLIName() = %q, want aws", got)
+	}
+
 	tests := []struct {
 		provider Provider
 		want     []string
@@ -17,7 +21,7 @@ func TestAuthCheckCommand(t *testing.T) {
 		{ProviderBitbucket, []string{"bb", "profile", "which"}},
 		{ProviderAzureDevOps, []string{"az", "account", "show"}},
 		{ProviderGitea, []string{"tea", "whoami"}},
-		{ProviderCodeCommit, []string{"aws", "sts", "get-caller-identity"}},
+		{ProviderCodeCommit, nil},
 	}
 
 	for _, tt := range tests {

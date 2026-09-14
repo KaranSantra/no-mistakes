@@ -598,7 +598,8 @@ func (p Provider) AuthCheckCommand() []string {
 	case ProviderGitea:
 		return []string{"tea", "whoami"}
 	case ProviderCodeCommit:
-		return []string{"aws", "sts", "get-caller-identity"}
+		// Host.Available performs the profile- and repository-scoped check.
+		return nil
 	default:
 		return nil
 	}
