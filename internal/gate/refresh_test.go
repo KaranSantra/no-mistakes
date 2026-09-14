@@ -30,6 +30,29 @@ func TestRefreshRepoURLsSSHToHTTPS(t *testing.T) {
 	}
 }
 
+func TestRefreshRepoURLsRefreshesOpaqueCodeCommitTarget(t *testing.T) {
+	const registered = "codecommit::us-west-2://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	const current = "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client"
+	database, workDir := refreshFixture(t, registered, "")
+	gitTestCmd(t, workDir, "remote", "add", "origin", current)
+	repo, _ := database.GetRepoByPath(workDir)
+
+	updated, changed, err := RefreshRepoURLs(context.Background(), database, repo)
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if !changed || !updated.URLsVerified || updated.UpstreamURL != current {
+		t.Fatalf("updated repo = %+v, changed = %t; want verified current CodeCommit target", updated, changed)
+	}
+	persisted, err := database.GetRepo(repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.UpstreamURL != current {
+		t.Fatalf("persisted upstream = %q, want %q", persisted.UpstreamURL, current)
+	}
+}
+
 func TestRefreshRepoURLsRefreshesUpstreamAndForkTogether(t *testing.T) {
 	ctx := context.Background()
 	database, workDir := refreshFixture(t, "git@github.com:parent/project.git", "git@github.com:fork/project.git")
@@ -116,6 +139,14 @@ func TestRefreshRepoURLsFailurePreservesExactRegistration(t *testing.T) {
 			origin: "git@example.com:owner/project.git",
 			addRemotes: func(t *testing.T, dir string) {
 				gitTestCmd(t, dir, "remote", "add", "origin", "https://user:secret@example.com/owner/project.git")
+			},
+			wantReason: RefreshInvalidRemote,
+		},
+		{
+			name:   "hierarchical CodeCommit origin",
+			origin: "codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client",
+			addRemotes: func(t *testing.T, dir string) {
+				gitTestCmd(t, dir, "remote", "add", "origin", "codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client")
 			},
 			wantReason: RefreshInvalidRemote,
 		},

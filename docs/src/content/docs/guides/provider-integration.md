@@ -270,31 +270,32 @@ profile your remote uses:
 aws configure sso   # or `aws configure` for access keys
 ```
 
-`no-mistakes` never handles AWS credentials itself. Use a profile-bearing
-[git-remote-codecommit](https://github.com/aws/git-remote-codecommit) remote:
+`no-mistakes` never handles AWS credentials itself. Exactly one
+[git-remote-codecommit](https://github.com/aws/git-remote-codecommit) remote
+spelling is supported:
 
 - `codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client`
-- `codecommit://AWSAdministratorAccess-123456789012@Example-Payments-Client`
 
 Every `aws codecommit` command carries that explicit `--profile`, plus
-`--region` when the remote names one. The second form may resolve its region
-from the selected profile.
+the explicit `--region` from the remote.
 
-Profileless git-remote-codecommit URLs and CodeCommit HTTPS or SSH Git
-endpoints are detected as CodeCommit, including SSH host aliases, FIPS
-endpoints, and `git-codecommit.cn-north-1.amazonaws.com.cn`, but PR creation is
-deliberately refused. Those transports can push through static Git credentials
-or an SSH key while an ambient AWS CLI identity opens the PR in a different AWS
-account that has the same repository name. Re-point the remote before running
-the pipeline:
+The hierarchical `codecommit://[<profile>@]<repository>` spelling,
+profileless opaque helpers, CodeCommit HTTPS or SSH Git endpoints, and console
+PR URLs are still detected as CodeCommit, but are deliberately refused. This
+matches the account-binding rule instead of reconstructing a profile stripped
+from persisted URL userinfo; teaching security-sensitive custody and routing
+code another URL shape would broaden that boundary. Existing
+git-remote-codecommit users can switch with one command:
 
 ```sh
 git remote set-url origin codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client
 ```
 
-Console PR URLs are also detected for run recovery, but cannot supply an AWS
-profile and are never used alone to build a host. China-region PR links use the
-`console.amazonaws.cn` partition domain.
+HTTPS and SSH detection includes aliases, FIPS endpoints, and
+`git-codecommit.cn-north-1.amazonaws.com.cn`. Those transports can push through
+static Git credentials or an SSH key while an ambient AWS CLI identity opens
+the PR in a different AWS account that has the same repository name.
+China-region PR links use the `console.amazonaws.cn` partition domain.
 
 The identity needs `codecommit:GetRepository`, `ListPullRequests`,
 `GetPullRequest`, `CreatePullRequest`, `UpdatePullRequestDescription`, and

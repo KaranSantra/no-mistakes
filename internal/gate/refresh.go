@@ -9,6 +9,7 @@ import (
 	"github.com/kunchenguid/no-mistakes/internal/db"
 	"github.com/kunchenguid/no-mistakes/internal/git"
 	"github.com/kunchenguid/no-mistakes/internal/scm"
+	"github.com/kunchenguid/no-mistakes/internal/scm/codecommit"
 )
 
 // RefreshFailureReason is a bounded, URL-free reason safe to emit in logs.
@@ -158,6 +159,10 @@ func inspectRefreshRemote(raw string) (refreshRemote, error) {
 	info := refreshRemote{raw: trimmed}
 	if trimmed == "" || trimmed != raw || strings.IndexFunc(trimmed, func(r rune) bool { return r <= ' ' || r == 0x7f }) >= 0 {
 		return info, fmt.Errorf("invalid remote")
+	}
+	if region, profile, repo, ok := codecommit.ParseSupportedRemote(trimmed); ok {
+		info.identity = "codecommit::" + region + "://" + profile + "@" + repo
+		return info, nil
 	}
 
 	var remotePath string

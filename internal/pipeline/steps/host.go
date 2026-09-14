@@ -10,7 +10,6 @@ import (
 
 	"github.com/kunchenguid/no-mistakes/internal/bitbucket"
 	"github.com/kunchenguid/no-mistakes/internal/pipeline"
-	"github.com/kunchenguid/no-mistakes/internal/safeurl"
 	"github.com/kunchenguid/no-mistakes/internal/scm"
 	"github.com/kunchenguid/no-mistakes/internal/scm/azuredevops"
 	"github.com/kunchenguid/no-mistakes/internal/scm/codecommit"
@@ -176,26 +175,9 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 			// request cannot span repositories at all.
 			return nil, "fork PR routing for AWS CodeCommit is not implemented"
 		}
-		// Parse the worktree's origin rather than the stored upstream URL: URL
-		// redaction rewrites the AWS profile in a codecommit://<profile>@<repo>
-		// remote to a placeholder, and the profile selects the credentials.
-		remote, fromOrigin := resolveUpstreamURLWithOrigin(sctx)
-		region, profile, repo, ok := codecommit.ResolveRemote(remote, scm.ResolveHost(sctx.Ctx, remote))
-		if ok && profile == "" {
-			return nil, codeCommitProfileRequiredReason
-		}
-		if !ok && sctx.Run.PRURL != nil {
-			if _, _, _, prOK := codecommit.ParseRemote(*sctx.Run.PRURL); prOK {
-				return nil, codeCommitProfileRequiredReason
-			}
-		}
+		remote := resolveUpstreamURL(sctx)
+		region, profile, repo, ok := codecommit.ParseSupportedRemote(remote)
 		if !ok {
-			return nil, "could not resolve the AWS CodeCommit repository from the remote URL"
-		}
-		storedRedactedProfile := !fromOrigin &&
-			profile == safeurl.RedactedUserinfo &&
-			strings.HasPrefix(strings.ToLower(strings.TrimSpace(remote)), "codecommit://"+safeurl.RedactedUserinfo+"@")
-		if storedRedactedProfile {
 			return nil, codeCommitProfileRequiredReason
 		}
 		return codecommit.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, region, profile, repo), ""

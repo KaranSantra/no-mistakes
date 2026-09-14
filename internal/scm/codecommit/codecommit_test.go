@@ -332,7 +332,7 @@ func TestCreatePRClampsToCodeCommitLimits(t *testing.T) {
 	}
 }
 
-func TestUpdatePRWritesDescriptionThenTitle(t *testing.T) {
+func TestUpdatePRWritesTitleThenDescription(t *testing.T) {
 	t.Parallel()
 
 	responses := map[string]awsTestResponse{
@@ -348,15 +348,15 @@ func TestUpdatePRWritesDescriptionThenTitle(t *testing.T) {
 		t.Fatalf("UpdatePR() = (%+v, %v), want the same PR", got, err)
 	}
 	if len(fake.calls) != 2 {
-		t.Fatalf("UpdatePR() made %d calls, want description then title", len(fake.calls))
-	}
-	var description updateDescriptionInput
-	if err := json.Unmarshal([]byte(fake.calls[0].input), &description); err != nil || description != (updateDescriptionInput{PullRequestID: "15", Description: body}) {
-		t.Fatalf("description request = %+v (%v)", description, err)
+		t.Fatalf("UpdatePR() made %d calls, want title then description", len(fake.calls))
 	}
 	var title updateTitleInput
-	if err := json.Unmarshal([]byte(fake.calls[1].input), &title); err != nil || title != (updateTitleInput{PullRequestID: "15", Title: "feat: retitled"}) {
+	if err := json.Unmarshal([]byte(fake.calls[0].input), &title); err != nil || title != (updateTitleInput{PullRequestID: "15", Title: "feat: retitled"}) {
 		t.Fatalf("title request = %+v (%v)", title, err)
+	}
+	var description updateDescriptionInput
+	if err := json.Unmarshal([]byte(fake.calls[1].input), &description); err != nil || description != (updateDescriptionInput{PullRequestID: "15", Description: body}) {
+		t.Fatalf("description request = %+v (%v)", description, err)
 	}
 
 	h, fake = newTestHost(responses)
@@ -365,6 +365,21 @@ func TestUpdatePRWritesDescriptionThenTitle(t *testing.T) {
 	}
 	if got := fake.keys(); len(got) != 1 || !strings.Contains(got[0], "update-pull-request-description") {
 		t.Fatalf("UpdatePR(body only) commands = %q, want only the description update", got)
+	}
+}
+
+func TestUpdatePRTitleFailureLeavesDescriptionUntouched(t *testing.T) {
+	t.Parallel()
+
+	h, fake := newTestHost(map[string]awsTestResponse{
+		awsCmd("update-pull-request-title --cli-input-json file://<request>"): {stderr: "AccessDeniedException", code: 254},
+	})
+	_, err := h.UpdatePR(context.Background(), &scm.PR{Number: "15"}, scm.PRContent{Title: "feat: retitled", Body: "managed body"})
+	if err == nil || !strings.Contains(err.Error(), "update-pull-request-title") {
+		t.Fatalf("UpdatePR() error = %v, want title update failure", err)
+	}
+	if got := fake.keys(); len(got) != 1 || !strings.Contains(got[0], "update-pull-request-title") {
+		t.Fatalf("UpdatePR() commands = %q, want only the title update", got)
 	}
 }
 

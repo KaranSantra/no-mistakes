@@ -37,15 +37,17 @@ Safest local verification sequence after non-trivial changes:
 
 **AWS CodeCommit Backend (`internal/scm/codecommit`)**
 
-- Shells out to AWS CLI v2 (`aws codecommit`), not an AWS SDK. Every command carries `--output json --no-cli-pager` and the explicit `--profile` from a profile-bearing git-remote-codecommit origin; `--region` is included when the remote names it. Command execution itself refuses an empty profile.
+- Shells out to AWS CLI v2 (`aws codecommit`), not an AWS SDK. Every command carries `--output json --no-cli-pager`, `--profile`, and `--region` from the sole supported origin form: `codecommit::<region>://<profile>@<repository>`. Command execution itself refuses an empty profile.
 - `Host.Available` owns the profile- and repository-scoped authentication probe; the generic `scm.AuthConfigured` path deliberately has no profileless CodeCommit command. Expired-SSO guidance quotes the selected profile in `aws sso login --profile ...`.
-- `buildHost` parses `resolveUpstreamURL(sctx)`, never `Repo.UpstreamURL`: `safeurl.Redact` rewrites the profile in `codecommit://<profile>@<repo>` to `redacted` (the `codecommit::<region>://` form is opaque to `url.Parse` and survives), and the profile selects the credentials. Profileless helper, HTTPS, SSH, alias-resolved, redacted-without-origin, and console-only URLs remain detectable as CodeCommit but return the actionable profile-bearing-remote refusal; a console PR URL is never an identity fallback.
+- Exactly one remote spelling is supported and the others are refused on purpose. The opaque form survives URL persistence and target fingerprinting with its account-selecting profile intact; the hierarchical `codecommit://` form loses URL userinfo under redaction. Refusing it matches the account-binding rule without teaching security-sensitive custody and routing code a new URL shape, and users can switch with one `git remote set-url`. Profileless opaque helpers, hierarchical helpers, HTTPS, SSH, alias-resolved, and console-only URLs remain detectable as CodeCommit but return the actionable opaque-remote refusal.
+- Run-start URL refresh accepts and persists the opaque form, so a changed region, profile, or repository becomes the run target instead of leaving a stale registration.
 - Writes pass an ASCII-escaped request document through `--cli-input-json file://`: the `--targets` shorthand splits a branch name on commas, and the CLI decodes local files in the locale encoding.
 - The PR URL is the partition-aware regional console URL ending in the PR ID, including `console.amazonaws.cn` for China. Runs persist only that URL and `scm.ExtractPRNumber` reads its last segment, so a `?region=` query or `/details` suffix breaks CI resume.
 - Merged state is head-bound: `GetMergedProof` reads the pull request target's `sourceCommit`, compares it with the run head even after merge, and returns `scm.ErrHeadChanged` on a mismatch.
 - `GetPRBaseBranch` reads the live target's `destinationReference`, so resumed CI follows the existing PR base rather than since-changed repository configuration.
 - CodeCommit has no checks API: `GetChecks` returns an empty list, never `ErrUnsupported` (which the CI step counts as a failed poll), so repositories need trusted `no_ci: true` to reach readiness.
-- Regressions: `internal/scm/codecommit/*_test.go`, `TestBuildHost_CodeCommitUsesProfileFromWorktreeOrigin`, `TestBuildHost_CodeCommitRefusesProfilelessRemoteForms`, `TestDetectProvider_CodeCommit`, `TestWebPRURLRoundTripsThroughRunRecovery`.
+- PR updates write the title before the description so a title failure cannot leave a managed body that suppresses title recovery on the next run.
+- Regressions: `internal/scm/codecommit/*_test.go`, `TestRefreshRepoURLsRefreshesOpaqueCodeCommitTarget`, `TestBuildHost_CodeCommitRefusesUnsupportedRemoteForms`, `TestDetectProvider_CodeCommit`, `TestWebPRURLRoundTripsThroughRunRecovery`.
 
 **GitHub user-attachments (`internal/scm/github/attachments.go`)**
 

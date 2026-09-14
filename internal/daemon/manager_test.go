@@ -570,7 +570,7 @@ func TestRunStartDoesNotRouteCodeCommitHelperRepositoryToGitHubProfile(t *testin
 	repo, headSHA := setupTestGitRepo(t, p, database, "codecommit-helper-profile-routing")
 	repo, err := database.UpdateRepoMetadata(
 		repo.ID,
-		"codecommit://AWSAdministratorAccess-123456789012@github.com",
+		"codecommit::us-east-1://AWSAdministratorAccess-123456789012@github.com",
 		"main",
 	)
 	if err != nil {

@@ -20,7 +20,7 @@ var regionPattern = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
 // ok=false for any non-CodeCommit remote or when the repository cannot be
 // determined.
 //
-// Supported forms:
+// Recognized forms:
 //
 //	codecommit::{region}://[{profile}@]{repository}
 //	codecommit://[{profile}@]{repository}
@@ -36,6 +36,20 @@ var regionPattern = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
 // name them.
 func ParseRemote(remote string) (region, profile, repo string, ok bool) {
 	return ResolveRemote(remote, "")
+}
+
+// ParseSupportedRemote extracts the region, profile, and repository from the
+// supported profile-bearing opaque git-remote-codecommit origin form.
+func ParseSupportedRemote(remote string) (region, profile, repo string, ok bool) {
+	s := strings.TrimSpace(remote)
+	if !strings.HasPrefix(strings.ToLower(s), "codecommit::") {
+		return "", "", "", false
+	}
+	region, profile, repo, ok = ParseRemote(s)
+	if !ok || region == "" || profile == "" {
+		return "", "", "", false
+	}
+	return region, profile, repo, true
 }
 
 // ResolveRemote is ParseRemote for a remote whose SSH host alias resolved to

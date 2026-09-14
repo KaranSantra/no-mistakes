@@ -307,20 +307,13 @@ func (h *Host) CreatePR(ctx context.Context, branch, base string, content scm.PR
 	return h.toPR(ctx, got)
 }
 
-// UpdatePR replaces the description and, when content carries one, the title.
-// CodeCommit has no combined update, so these are separate commands and a
-// failed title update leaves the new description in place; the error still
-// fails the call, and the pipeline's next publication rewrites both.
+// UpdatePR replaces a non-empty title before replacing the description.
+// CodeCommit has no combined update; title-first ordering leaves the body
+// unmanaged when title publication fails so the next run redrafts both.
 func (h *Host) UpdatePR(ctx context.Context, pr *scm.PR, content scm.PRContent) (*scm.PR, error) {
 	id := prID(pr)
 	if id == "" {
 		return nil, errors.New("aws codecommit update-pull-request-description: missing PR id")
-	}
-	if _, err := h.runWithInput(ctx, "update-pull-request-description", updateDescriptionInput{
-		PullRequestID: id,
-		Description:   clampDescription(content.Body),
-	}); err != nil {
-		return nil, fmt.Errorf("aws codecommit update-pull-request-description: %w", err)
 	}
 	if content.Title != "" {
 		if _, err := h.runWithInput(ctx, "update-pull-request-title", updateTitleInput{
@@ -329,6 +322,12 @@ func (h *Host) UpdatePR(ctx context.Context, pr *scm.PR, content scm.PRContent) 
 		}); err != nil {
 			return nil, fmt.Errorf("aws codecommit update-pull-request-title: %w", err)
 		}
+	}
+	if _, err := h.runWithInput(ctx, "update-pull-request-description", updateDescriptionInput{
+		PullRequestID: id,
+		Description:   clampDescription(content.Body),
+	}); err != nil {
+		return nil, fmt.Errorf("aws codecommit update-pull-request-description: %w", err)
 	}
 	return pr, nil
 }

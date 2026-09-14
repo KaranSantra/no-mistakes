@@ -8,8 +8,7 @@ import (
 
 var httpURLPattern = regexp.MustCompile(`https?://[^\s'"<>]+`)
 
-// RedactedUserinfo is the placeholder Redact substitutes for URL userinfo.
-const RedactedUserinfo = "redacted"
+const redactedUserinfo = "redacted"
 
 // Redact hides URL userinfo while leaving non-URL and credential-free values
 // unchanged.
@@ -22,7 +21,7 @@ func Redact(raw string) string {
 	if err != nil || parsed.User == nil {
 		return raw
 	}
-	parsed.User = url.User(RedactedUserinfo)
+	parsed.User = url.User(redactedUserinfo)
 	return parsed.String()
 }
 
