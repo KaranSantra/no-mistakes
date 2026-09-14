@@ -832,8 +832,9 @@ func restampPRAttestationWithSteps(ctx context.Context, host scm.Host, pr *scm.P
 			if rebindErr != nil {
 				return fmt.Errorf("rebind PR appendix: %w", rebindErr)
 			}
-			// Azure's adapter clamps ordinary descriptions. Owned writes must
-			// fail before that boundary can cut off author text or the digest.
+			// Azure and CodeCommit adapters clamp ordinary descriptions. Owned
+			// writes must fail before that boundary can cut off author text or
+			// the digest.
 			if rebound && hasPRAppendixMarkers(updated) {
 				if err := validateOwnedPRBudget(updated, scm.MaxPRBodyChars(host.Provider())); err != nil {
 					return err

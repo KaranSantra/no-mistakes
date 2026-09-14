@@ -98,7 +98,7 @@ The GitHub PR step opens PRs with a fork-qualified head such as `your-user:featu
 Re-running `no-mistakes init` later preserves the stored fork URL unless you pass a new `--fork-url`.
 
 Fork routing currently requires both `origin` and `--fork-url` to be GitHub remotes with owner/repo paths.
-GitLab, Forgejo, Bitbucket, and Azure DevOps fork MR/PR routing are not implemented yet; if a legacy or manually edited repo record has `fork_url` set for those providers, PR creation skips instead of opening an unsafe self PR.
+Other providers do not implement fork MR/PR routing; if a legacy or manually edited non-GitHub repo record has `fork_url` set, PR creation skips instead of opening an unsafe self PR.
 
 #### Workflow-file changes require the `workflow` scope
 
@@ -217,7 +217,7 @@ well as their SSH forms (`git@ssh.dev.azure.com:v3/...`).
 
 - Failed check log fetching for the CI auto-fix step (the `az` CLI has no
   first-class build-log command)
-- Fork PR routing (same as GitLab, Forgejo, and Bitbucket)
+- Fork PR routing (currently GitHub-only)
 
 ## Gitea
 
@@ -246,7 +246,7 @@ tea logins list
 **What you don't get (yet):**
 
 - PR mergeability polling and merge-conflict auto-fix. Gitea's PR `mergeable` field has a documented upstream reliability bug ([go-gitea/gitea#25849](https://github.com/go-gitea/gitea/issues/25849)) that can stick `false` after a conflict is actually resolved, so no-mistakes declines the capability rather than trust it - the same posture as Bitbucket Cloud.
-- Fork PR routing (same as GitLab, Bitbucket Cloud, and Azure DevOps)
+- Fork PR routing (currently GitHub-only)
 - [Transient-check rerun](/no-mistakes/reference/repo-config/#cirerun_transient)
 
 Gitea Actions shipped in Gitea 1.19 (2023); older instances have no Actions API to poll. As with any repository with no CI, declare `no_ci: true` on the trusted default branch so the CI step does not wait for checks that will never appear - see the [CI step reference](/no-mistakes/reference/pipeline-steps/#ci).
@@ -294,6 +294,10 @@ git-remote-codecommit users can switch with one command:
 git remote set-url origin codecommit::us-east-1://AWSAdministratorAccess-123456789012@Example-Payments-Client
 ```
 
+At run start, any refused CodeCommit spelling observed among `origin`'s URLs,
+including a value that appears during the confirmation read, aborts the run
+instead of falling back to a previously registered target.
+
 HTTPS and SSH detection includes aliases, FIPS endpoints, and
 `git-codecommit.cn-north-1.amazonaws.com.cn`. Those transports can push through
 static Git credentials or an SSH key while an ambient AWS CLI identity opens
@@ -310,9 +314,9 @@ reminder to run
 **What you get:**
 
 - PR creation and update (`aws codecommit create-pull-request` / `update-pull-request-description` / `update-pull-request-title`).
-  Descriptions are capped at 10,240 characters and titles at 150; see the
-  [PR step reference](/no-mistakes/reference/pipeline-steps/#pr) for
-  description composition and truncation.
+  The [PR step reference](/no-mistakes/reference/pipeline-steps/#pr) owns title
+  and ordinary-description budgets; [`pr.template`](/no-mistakes/reference/repo-config/#prtemplate)
+  owns author-preserving publication and its non-truncating budget behavior.
 - PR links that open the pull request in the AWS console for the repository's region
 - CI monitoring of PR state until the PR is merged or closed
 

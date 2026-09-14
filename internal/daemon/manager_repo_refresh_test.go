@@ -200,6 +200,7 @@ func TestRunStartFailsClosedWhenCloneMovesToUnsupportedCodeCommitRemote(t *testi
 	if err == nil || err.Error() != codecommit.UnsupportedRemoteReason {
 		t.Fatalf("start run = (%q, %v), want exact CodeCommit refusal", runID, err)
 	}
+	startErr := err
 	if runID != "" {
 		t.Fatalf("run ID = %q, want no run", runID)
 	}
@@ -218,6 +219,7 @@ func TestRunStartFailsClosedWhenCloneMovesToUnsupportedCodeCommitRemote(t *testi
 	if stored.UpstreamURL != registered {
 		t.Fatalf("stored upstream = %q, want unchanged %q", stored.UpstreamURL, registered)
 	}
+	t.Logf("run-start result: no run created; prior registration preserved; error: %v", startErr)
 }
 
 type captureRefreshRepoStep struct {

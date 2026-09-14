@@ -2,14 +2,12 @@
 // commands.
 //
 // No AWS credentials pass through no-mistakes. Every command carries the
-// --profile the repository's remote URL names and the --region when it names
-// one. Region resolution may remain in the selected profile, but an unnamed
-// profile is refused so Git and PR operations cannot silently use different
-// AWS identities.
+// --profile and --region named by the sole supported remote form. Requiring
+// both keeps Git and PR operations bound to the same AWS identity and region.
 //
 // CodeCommit has neither a check/status API for pull requests nor a stored
-// pull request merge status, so GetChecks reports no checks and mergeability
-// is declined.
+// mergeability result, so GetChecks reports no checks and mergeability is
+// declined. Completed merges are still proven from the target's merge metadata.
 package codecommit
 
 import (
@@ -85,7 +83,7 @@ type CmdFactory func(ctx context.Context, name string, args ...string) *exec.Cmd
 type Host struct {
 	cmd          CmdFactory
 	cliAvailable func() bool
-	region       string // AWS region named by the remote; empty defers to the AWS CLI
+	region       string // AWS region named by the remote; direct construction may leave it empty
 	profile      string // AWS CLI profile named by the remote
 	repo         string // repository name
 
@@ -96,9 +94,9 @@ type Host struct {
 var _ scm.PRBaseBranchReader = (*Host)(nil)
 
 // New builds a Host. cliAvailable reports whether the aws binary is resolvable
-// on the caller's PATH. region and profile are the values the remote URL names
-// (see ParseRemote); region may be empty and resolve through the selected
-// profile. repo names the repository every command is scoped to.
+// on the caller's PATH. Production routing passes the region, profile, and
+// repository from ParseSupportedRemote. A directly constructed Host may omit
+// region; its repository ARN then supplies the console-link region.
 func New(cmd CmdFactory, cliAvailable func() bool, region, profile, repo string) *Host {
 	return &Host{
 		cmd:          cmd,
@@ -112,9 +110,9 @@ func New(cmd CmdFactory, cliAvailable func() bool, region, profile, repo string)
 func (h *Host) Provider() scm.Provider { return scm.ProviderCodeCommit }
 
 // Capabilities reports the CodeCommit feature matrix. Mergeability is not wired
-// up: CodeCommit keeps no merge status on a pull request, only an on-demand
-// get-merge-conflicts evaluation per merge strategy. Failed-check logs do not
-// apply because GetChecks reports no checks.
+// up: CodeCommit keeps no aggregate mergeable state on a pull request, only an
+// on-demand get-merge-conflicts evaluation per merge strategy. Failed-check
+// logs do not apply because GetChecks reports no checks.
 func (h *Host) Capabilities() scm.Capabilities {
 	return scm.Capabilities{MergeableState: false, FailedCheckLogs: false, MergedProof: true}
 }
@@ -484,9 +482,9 @@ func (h *Host) getRepository(ctx context.Context) error {
 	return nil
 }
 
-// consoleRegion returns the region for browsable pull request URLs: the one the
-// remote names or, for a codecommit://[profile@]repository remote that leaves
-// the region to the AWS CLI's configuration, the one in the repository's ARN.
+// consoleRegion returns the region for browsable pull request URLs. Production
+// routing always supplies it from the supported origin; the repository ARN is
+// a defensive fallback for directly constructed Hosts.
 func (h *Host) consoleRegion(ctx context.Context) (string, error) {
 	if h.region != "" {
 		return h.region, nil

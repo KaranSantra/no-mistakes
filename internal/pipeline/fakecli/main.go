@@ -91,9 +91,79 @@ func handleFakeCLI(mode string) {
 		} else {
 			fakeCIGHHandler(args)
 		}
+	case "aws-codecommit":
+		fakeAWSCodeCommitHandler(args)
 	default:
 		os.Exit(1)
 	}
+}
+
+func fakeAWSCodeCommitHandler(args []string) {
+	if len(args) < 2 || args[0] != "codecommit" {
+		os.Exit(1)
+	}
+	repo := os.Getenv("FAKE_CLI_CODECOMMIT_REPO")
+	if repo == "" {
+		repo = "Example-Payments-Client"
+	}
+	region := os.Getenv("FAKE_CLI_CODECOMMIT_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	switch args[1] {
+	case "get-repository":
+		fmt.Printf(`{"repositoryMetadata":{"repositoryName":%q,"Arn":%q}}`+"\n", repo, "arn:aws:codecommit:"+region+":123456789012:"+repo)
+	case "list-pull-requests":
+		fmt.Println(`{"pullRequestIds":[]}`)
+	case "create-pull-request":
+		path, ok := fakeCLIFlagValue(args, "--cli-input-json")
+		if !ok {
+			os.Exit(1)
+		}
+		path = strings.TrimPrefix(path, "file://")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			os.Exit(1)
+		}
+		if requestLog := os.Getenv("FAKE_CLI_REQUEST_LOG"); requestLog != "" {
+			if err := os.WriteFile(requestLog, data, 0o600); err != nil {
+				os.Exit(1)
+			}
+		}
+		var input struct {
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			Targets     []struct {
+				RepositoryName       string `json:"repositoryName"`
+				SourceReference      string `json:"sourceReference"`
+				DestinationReference string `json:"destinationReference"`
+			} `json:"targets"`
+		}
+		if json.Unmarshal(data, &input) != nil || len(input.Targets) != 1 {
+			os.Exit(1)
+		}
+		target := input.Targets[0]
+		response := map[string]any{"pullRequest": map[string]any{
+			"pullRequestId":     "15",
+			"title":             input.Title,
+			"description":       input.Description,
+			"pullRequestStatus": "OPEN",
+			"pullRequestTargets": []map[string]any{{
+				"repositoryName":       target.RepositoryName,
+				"sourceReference":      "refs/heads/" + target.SourceReference,
+				"destinationReference": "refs/heads/" + target.DestinationReference,
+				"sourceCommit":         strings.Repeat("a", 40),
+				"mergeMetadata":        map[string]any{"isMerged": false},
+			}},
+		}}
+		if json.NewEncoder(os.Stdout).Encode(response) != nil {
+			os.Exit(1)
+		}
+	default:
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 func logFakeCLIStdinBody(args []string, logFile string) {

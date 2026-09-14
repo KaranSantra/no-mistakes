@@ -20,7 +20,9 @@ var regionPattern = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
 // ParseRemote extracts the AWS region, AWS CLI profile, and repository name
 // from a CodeCommit git remote (or console pull-request) URL. It returns
 // ok=false for any non-CodeCommit remote or when the repository cannot be
-// determined.
+// determined. Recognition is deliberately broader than provider support so
+// refused CodeCommit spellings receive CodeCommit-specific guidance; host
+// construction must use ParseSupportedRemote.
 //
 // Recognized forms:
 //
