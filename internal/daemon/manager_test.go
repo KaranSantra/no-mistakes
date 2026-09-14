@@ -430,6 +430,16 @@ func (s *captureForgeContextStep) Execute(sctx *pipeline.StepContext) (*pipeline
 	return &pipeline.StepOutcome{}, nil
 }
 
+type captureForgeContextPresenceStep struct {
+	present chan<- bool
+}
+
+func (s *captureForgeContextPresenceStep) Name() types.StepName { return types.StepReview }
+func (s *captureForgeContextPresenceStep) Execute(sctx *pipeline.StepContext) (*pipeline.StepOutcome, error) {
+	s.present <- sctx.ForgeContext != nil
+	return &pipeline.StepOutcome{}, nil
+}
+
 type barrierForgeContextStep struct {
 	contexts chan<- capturedForgeContext
 	release  <-chan struct{}
@@ -543,6 +553,44 @@ func TestPushReceivedResolvesForgeProfileIntoRunContext(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunStartDoesNotRouteCodeCommitHelperRepositoryToGitHubProfile(t *testing.T) {
+	t.Setenv("NM_DEMO", "1")
+	p, database := newRefreshRunFixture(t)
+	profileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(profileDir, "hosts.yml"), []byte("github.com:\n    user: test-user\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p.ConfigFile(), []byte(fmt.Sprintf("forge_profiles:\n  github.com:\n    gh_config_dir: %s\n", profileDir)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo, headSHA := setupTestGitRepo(t, p, database, "codecommit-helper-profile-routing")
+	repo, err := database.UpdateRepoMetadata(
+		repo.ID,
+		"codecommit://AWSAdministratorAccess-123456789012@github.com",
+		"main",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	present := make(chan bool, 1)
+	manager := NewRunManager(database, p, func() []pipeline.Step {
+		return []pipeline.Step{&captureForgeContextPresenceStep{present: present}}
+	})
+	t.Cleanup(manager.Shutdown)
+	runID, err := manager.startRun(context.Background(), repo, "main", headSHA, "0000000000000000000000000000000000000000", "test", nil, "CodeCommit helper routing", "")
+	if err != nil {
+		t.Fatalf("start run: %v", err)
+	}
+	if run := waitForRunTerminalState(t, database, runID); run.Status != types.RunCompleted {
+		t.Fatalf("run status = %q, want %q: %v", run.Status, types.RunCompleted, run.Error)
+	}
+	if <-present {
+		t.Fatal("CodeCommit helper repository name selected a GitHub forge profile")
 	}
 }
 

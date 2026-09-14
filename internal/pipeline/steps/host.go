@@ -192,7 +192,10 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 		if !ok {
 			return nil, "could not resolve the AWS CodeCommit repository from the remote URL"
 		}
-		if profile == safeurl.RedactedUserinfo && !fromOrigin {
+		storedRedactedProfile := !fromOrigin &&
+			profile == safeurl.RedactedUserinfo &&
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(remote)), "codecommit://"+safeurl.RedactedUserinfo+"@")
+		if storedRedactedProfile {
 			return nil, codeCommitProfileRequiredReason
 		}
 		return codecommit.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, region, profile, repo), ""

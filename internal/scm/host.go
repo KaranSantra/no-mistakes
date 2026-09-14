@@ -19,6 +19,9 @@ func ExtractHost(remote string) string {
 	if s == "" {
 		return ""
 	}
+	if isCodeCommitHelperRemote(s) {
+		return ""
+	}
 	if i := strings.Index(s, "://"); i >= 0 {
 		// URL form: scheme://[user@]host[:port]/path. Split off the path at the
 		// first '/' before scanning for userinfo, so a '@' inside the path

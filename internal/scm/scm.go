@@ -155,7 +155,7 @@ func detectHostedProvider(host string) Provider {
 // because the console host serves every AWS service.
 func isCodeCommitRemote(remote string) bool {
 	lower := strings.ToLower(strings.TrimSpace(remote))
-	if strings.HasPrefix(lower, "codecommit::") || strings.HasPrefix(lower, "codecommit://") {
+	if isCodeCommitHelperRemote(lower) {
 		return true
 	}
 	host := ExtractHost(lower)
@@ -171,6 +171,11 @@ func isCodeCommitRemote(remote string) bool {
 		}
 	}
 	return false
+}
+
+func isCodeCommitHelperRemote(remote string) bool {
+	lower := strings.ToLower(strings.TrimSpace(remote))
+	return strings.HasPrefix(lower, "codecommit::") || strings.HasPrefix(lower, "codecommit://")
 }
 
 // isCodeCommitGitHost reports whether host is a CodeCommit Git endpoint:

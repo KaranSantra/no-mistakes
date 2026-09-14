@@ -115,6 +115,23 @@ func TestBuildHost_CodeCommitAllowsLiteralRedactedProfileFromWorktreeOrigin(t *t
 	}
 }
 
+func TestBuildHost_CodeCommitAllowsLiteralRedactedProfileFromStoredOpaqueRemote(t *testing.T) {
+	sctx := &pipeline.StepContext{
+		Ctx:     context.Background(),
+		WorkDir: t.TempDir(),
+		Run:     &db.Run{Branch: "feature/codecommit"},
+		Repo: &db.Repo{
+			UpstreamURL:   "codecommit::us-east-1://" + safeurl.RedactedUserinfo + "@Example-Payments-Client",
+			DefaultBranch: "main",
+		},
+	}
+
+	host, reason := buildHost(sctx, scm.ProviderCodeCommit)
+	if host == nil || reason != "" {
+		t.Fatalf("buildHost() = (%v, %q), want CodeCommit host", host, reason)
+	}
+}
+
 func TestBuildHost_CodeCommitRefusesProfilelessRemoteForms(t *testing.T) {
 	prURL := "https://eu-west-2.console.aws.amazon.com/codesuite/codecommit/repositories/Example-Payments-Client/pull-requests/42"
 	for _, tc := range []struct {
