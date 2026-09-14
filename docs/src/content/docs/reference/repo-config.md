@@ -222,7 +222,7 @@ An empty value is valid and means "fall back to the forge default branch"; a non
 
 ### pr.template
 
-Use a repository Markdown template for the public narrative, followed by no-mistakes' protected evidence appendix. Supported on **GitHub, GitLab, Gitea, Forgejo, Azure DevOps, and Bitbucket Cloud**, using each backend's authenticated raw-description transport. Forgejo requires `forgejo-axi` with the raw `api` command (contract verified against 1.3.0); an older CLI without it fails rather than using a preview. Self-hosted instances use the existing provider routing.
+Use a repository Markdown template for the public narrative, followed by no-mistakes' protected evidence appendix. Supported on **GitHub, GitLab, Gitea, Forgejo, Azure DevOps, Bitbucket Cloud, and AWS CodeCommit**, using each backend's authenticated raw-description transport. Forgejo requires `forgejo-axi` with the raw `api` command (contract verified against 1.3.0); an older CLI without it fails rather than using a preview. Self-hosted instances use the existing provider routing.
 
 | | |
 | --- | --- |
@@ -624,7 +624,7 @@ Answering that gate with `fix` is still honored: the fix round you asked for rep
 
 Reruns are skipped when:
 
-- The provider has no rerun API (only GitHub implements one today; GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, and Gitea reach the approval gate without a rerun).
+- The provider has no rerun API (only GitHub implements one today; GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, Gitea, and AWS CodeCommit reach the approval gate without a rerun).
 - The check's details link names nothing the provider can re-run, for example a third-party status pointing at an external dashboard, or a link under a workflow run that names no job the API accepts. A link naming one job re-runs that job; a cancelled check naming only the workflow run re-runs the whole workflow, while other run-only links re-run failed jobs; an unrecognized link is widened into neither.
 - The published branch head no longer equals the commit the run delivered. That case terminates with the expected and observed commits instead: re-running checks against a different head would certify a revision this run never produced. See [pipeline steps: CI](/no-mistakes/reference/pipeline-steps/#ci).
 

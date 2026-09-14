@@ -10,8 +10,10 @@ import (
 
 	"github.com/kunchenguid/no-mistakes/internal/bitbucket"
 	"github.com/kunchenguid/no-mistakes/internal/pipeline"
+	"github.com/kunchenguid/no-mistakes/internal/safeurl"
 	"github.com/kunchenguid/no-mistakes/internal/scm"
 	"github.com/kunchenguid/no-mistakes/internal/scm/azuredevops"
+	"github.com/kunchenguid/no-mistakes/internal/scm/codecommit"
 	"github.com/kunchenguid/no-mistakes/internal/scm/forgejo"
 	"github.com/kunchenguid/no-mistakes/internal/scm/gitea"
 	"github.com/kunchenguid/no-mistakes/internal/scm/github"
@@ -167,6 +169,31 @@ func buildHost(sctx *pipeline.StepContext, provider scm.Provider) (scm.Host, str
 		// from Host.Available instead of failing host construction outright.
 		login := scm.ResolveGiteaLogin(host)
 		return gitea.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, host, login, repoSlug), ""
+	case scm.ProviderCodeCommit:
+		if sctx.Repo.ForkURL != "" {
+			// Fork PR routing for CodeCommit is intentionally not half-wired,
+			// mirroring the other non-GitHub providers; a CodeCommit pull
+			// request cannot span repositories at all.
+			return nil, "fork PR routing for AWS CodeCommit is not implemented"
+		}
+		// Parse the worktree's origin rather than the stored upstream URL: URL
+		// redaction rewrites the AWS profile in a codecommit://<profile>@<repo>
+		// remote to a placeholder, and the profile selects the credentials.
+		remote := resolveUpstreamURL(sctx)
+		region, profile, repo, ok := codecommit.ResolveRemote(remote, scm.ResolveHost(sctx.Ctx, remote))
+		if ok && profile == safeurl.RedactedUserinfo {
+			// resolveUpstreamURL fell back to the stored, redacted URL; running
+			// under a profile literally named after the placeholder would only
+			// surface later as a misleading credentials failure.
+			return nil, "could not recover the AWS profile of the redacted CodeCommit remote URL from the worktree's origin"
+		}
+		if !ok && sctx.Run.PRURL != nil {
+			region, profile, repo, ok = codecommit.ParseRemote(*sctx.Run.PRURL)
+		}
+		if !ok {
+			return nil, "could not resolve the AWS CodeCommit repository from the remote URL"
+		}
+		return codecommit.New(cmdFactory, func() bool { return stepCLIAvailable(sctx, provider) }, region, profile, repo), ""
 	default:
 		return nil, fmt.Sprintf("provider %s is not supported yet", provider)
 	}

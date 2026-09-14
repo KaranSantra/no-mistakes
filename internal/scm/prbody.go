@@ -26,12 +26,15 @@ func PRBodyLen(s string) int {
 // measured in PRBodyLen units, or 0 when the provider imposes no practical
 // limit. Azure DevOps rejects `az repos pr create`/`update` with "Invalid
 // argument value. ... A description for a pull request must not be longer than
-// 4000 characters."; GitHub and GitLab allow far larger bodies than this tool
-// ever produces, so they report 0 (unlimited).
+// 4000 characters."; AWS CodeCommit caps a pull request description at 10240
+// characters. GitHub and GitLab allow far larger bodies than this tool ever
+// produces, so they report 0 (unlimited).
 func MaxPRBodyChars(p Provider) int {
 	switch p {
 	case ProviderAzureDevOps:
 		return 4000
+	case ProviderCodeCommit:
+		return 10240
 	default:
 		return 0
 	}

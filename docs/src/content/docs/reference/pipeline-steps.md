@@ -240,9 +240,9 @@ Creates or updates a pull request.
 
 **Skipped when:**
 - The branch is the [PR base branch](/no-mistakes/reference/repo-config/#prbase_branch) (the repository's forge default branch, or the trusted `pr.base_branch` when configured)
-- The upstream host is not GitHub, GitLab, Forgejo, Bitbucket Cloud (`bitbucket.org`), Azure DevOps (`dev.azure.com` / `*.visualstudio.com`), or Gitea
-- The provider CLI (`gh`, `glab`, `forgejo-axi`, or `tea`) is not installed for GitHub, GitLab, Forgejo, or Gitea (GitHub also skips when `gh` is missing from `PATH`)
-- The provider CLI is not authenticated for GitHub, GitLab, Forgejo, or Gitea (GitHub reports a timed-out or interrupted `gh auth status` separately from auth failure; either still skips)
+- The upstream host is not GitHub, GitLab, Forgejo, Bitbucket Cloud (`bitbucket.org`), Azure DevOps (`dev.azure.com` / `*.visualstudio.com`), Gitea, or AWS CodeCommit
+- The provider CLI (`gh`, `glab`, `forgejo-axi`, `tea`, or `aws`) is not installed for GitHub, GitLab, Forgejo, Gitea, or AWS CodeCommit (GitHub also skips when `gh` is missing from `PATH`)
+- The provider CLI is not authenticated for GitHub, GitLab, Forgejo, or Gitea (GitHub reports a timed-out or interrupted `gh auth status` separately from auth failure; either still skips), or cannot read the AWS CodeCommit repository with the remote's profile and region
 - Bitbucket Cloud credentials are missing (`NO_MISTAKES_BITBUCKET_EMAIL` or `NO_MISTAKES_BITBUCKET_API_TOKEN`)
 - The `az` CLI with the `azure-devops` extension is not installed or not authenticated for Azure DevOps
 - A legacy or manually edited non-GitHub repo record has `fork_url` set, because fork MR/PR routing is currently GitHub-only
@@ -252,7 +252,7 @@ Creates or updates a pull request.
 - If one exists, updates it. If not, creates a new one against the configured base branch, or the per-run `--base-branch` override when set.
 - A per-run `--base-branch` that disagrees with an existing PR's live forge base retargets that PR (GitHub `gh pr edit --base`, GitLab `glab mr update --target-branch`, Gitea `tea api` PATCH) before updating title and body, but only the run's persisted PR URL or number after `GetPRState` proves it is still open. A sibling first-list-hit is ignored in favor of that identity; a closed or merged persisted identity, a run with no persisted identity, or a provider that cannot retarget, fails closed instead of moving another review object. A rerun inherits the selected run's PR URL only when that PR is not already merged or closed. A repo-config `pr.base_branch` change still does not retarget.
 - If existing-PR discovery fails or its provider response cannot be decoded and validated as a PR listing for the configured repository, stops instead of treating the result as no PR and creating a duplicate.
-- Uses `gh` for GitHub, `glab` for GitLab, `forgejo-axi` for Forgejo, `tea` for Gitea, the Bitbucket API for Bitbucket Cloud, and `az` for Azure DevOps
+- Uses `gh` for GitHub, `glab` for GitLab, `forgejo-axi` for Forgejo, `tea` for Gitea, the Bitbucket API for Bitbucket Cloud, `az` for Azure DevOps, and `aws` for AWS CodeCommit
 - For GitHub fork routing, keeps `gh --repo` pointed at the parent repository from `origin`, checks existing PRs with the bare branch name, filters matching PRs by head owner, and creates PRs with `--head <fork-owner>:<branch>`
 - Honors the configured draft setting. The [global](/no-mistakes/reference/global-config/#providersgithubdraft_pull_requests) and [per-repo](/no-mistakes/reference/repo-config/#providersgithubdraft_pull_requests) config references own provider support and create-versus-update behavior.
 - PR title: agent-generated from the final branch delta with user intent when available. With no `pr.title_format`, it uses conventional commit format (`type(scope): description` or `type: description`); user-facing product impact should use `feat` or `fix` so release automation can pick it up; when a scope is used, it should be the primary affected real module/package from the changed paths and kept broad rather than file-level. A configured `pr.title_format` replaces that default and can use `{{.Branch}}` and `{{.Title}}` to apply repository-specific conventions after the agent returns only the bare title text. If drafting fails, the ordinary fallback is `chore: update pull request`; with a configured format, the formatter receives `update pull request` as its `{{.Title}}` value.
@@ -306,7 +306,7 @@ The comment is intentionally data only. It does not declare any step required, p
 
 Monitors PR health after creation and auto-fixes CI failures. Mergeability polling and merge-conflict handling apply to GitHub, GitLab, Forgejo, and Azure DevOps.
 
-**Active for GitHub, GitLab, Forgejo, Bitbucket Cloud (`bitbucket.org`), Azure DevOps (`dev.azure.com` / `*.visualstudio.com`), and Gitea**.
+**Active for GitHub, GitLab, Forgejo, Bitbucket Cloud (`bitbucket.org`), Azure DevOps (`dev.azure.com` / `*.visualstudio.com`), Gitea, and AWS CodeCommit**.
 
 - GitHub requires `gh` CLI, installed and authenticated, version >= 2.50 (older versions reject the `gh pr checks --json` call the monitor reads checks with).
 - GitLab requires `glab` CLI, installed and authenticated.
@@ -314,6 +314,7 @@ Monitors PR health after creation and auto-fixes CI failures. Mergeability polli
 - Bitbucket Cloud requires `NO_MISTAKES_BITBUCKET_EMAIL` and `NO_MISTAKES_BITBUCKET_API_TOKEN`.
 - Azure DevOps requires the `az` CLI with the `azure-devops` extension, authenticated with a PAT.
 - Gitea requires `tea` CLI, installed with a login configured for the instance.
+- AWS CodeCommit requires the `aws` CLI v2 with credentials for the remote's profile. CodeCommit reports no checks, so a repository without a trusted `no_ci: true` waits for checks until `ci_timeout`.
 
 **Behavior:**
 

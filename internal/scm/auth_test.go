@@ -17,6 +17,7 @@ func TestAuthCheckCommand(t *testing.T) {
 		{ProviderBitbucket, []string{"bb", "profile", "which"}},
 		{ProviderAzureDevOps, []string{"az", "account", "show"}},
 		{ProviderGitea, []string{"tea", "whoami"}},
+		{ProviderCodeCommit, []string{"aws", "sts", "get-caller-identity"}},
 	}
 
 	for _, tt := range tests {

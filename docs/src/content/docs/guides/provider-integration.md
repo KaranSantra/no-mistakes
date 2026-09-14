@@ -1,13 +1,13 @@
 ---
 title: Provider Integration
-description: Set up GitHub, GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, or Gitea for PR creation and CI monitoring.
+description: Set up GitHub, GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, Gitea, or AWS CodeCommit for PR creation and CI monitoring.
 ---
 
-The PR and CI steps need to talk to your git host. Six hosts are supported:
+The PR and CI steps need to talk to your git host. Seven hosts are supported:
 GitHub, GitLab, Forgejo, Bitbucket Cloud (`bitbucket.org`), Azure DevOps
-(`dev.azure.com` and legacy `*.visualstudio.com`), and Gitea (almost always
-self-hosted). Everything else short-circuits the PR and CI steps with
-`skipped`.
+(`dev.azure.com` and legacy `*.visualstudio.com`), Gitea (almost always
+self-hosted), and AWS CodeCommit. Everything else short-circuits the PR and CI
+steps with `skipped`.
 
 Provider integration is optional for the local gate. You only need it for the
 steps that happen after validation: opening or updating the PR, watching hosted
@@ -26,15 +26,15 @@ What you do not get is PR automation and CI monitoring.
 
 ## What each step needs
 
-| Step | GitHub | GitLab | Forgejo | Bitbucket Cloud | Azure DevOps | Gitea |
-| --- | --- | --- | --- | --- | --- | --- |
-| **PR** (create/update) | `gh` CLI, authenticated | `glab` CLI, authenticated | `forgejo-axi`, authenticated | `NO_MISTAKES_BITBUCKET_EMAIL` + `NO_MISTAKES_BITBUCKET_API_TOKEN` | `az` CLI + `azure-devops` extension, authenticated | `tea` CLI, authenticated |
-| **CI** (polling, auto-fix) | `gh` CLI | `glab` CLI | `forgejo-axi` | same env vars | `az` CLI | `tea` CLI |
-| **Merge conflict auto-fix** | `gh` CLI | `glab` CLI | `forgejo-axi` | not supported | `az` CLI | not supported |
-| **Mergeability polling** | `gh` CLI | `glab` CLI | `forgejo-axi` | not supported | `az` CLI | not supported |
-| **Failed check log fetching** | `gh` CLI | `glab` CLI | `forgejo-axi` when runtime routes are available | supported | not yet | supported |
-| **Review-bot findings and comments at the CI gate** | GitHub via `gh` CLI | not supported | not supported | not supported | not supported | not supported |
-| **[Transient-check rerun](/no-mistakes/reference/repo-config/#cirerun_transient)** (cancellations and pre-run infra failures) | `gh` CLI | not supported | not supported | not supported | not supported | not supported |
+| Step | GitHub | GitLab | Forgejo | Bitbucket Cloud | Azure DevOps | Gitea | AWS CodeCommit |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **PR** (create/update) | `gh` CLI, authenticated | `glab` CLI, authenticated | `forgejo-axi`, authenticated | `NO_MISTAKES_BITBUCKET_EMAIL` + `NO_MISTAKES_BITBUCKET_API_TOKEN` | `az` CLI + `azure-devops` extension, authenticated | `tea` CLI, authenticated | `aws` CLI v2, authenticated |
+| **CI** (polling, auto-fix) | `gh` CLI | `glab` CLI | `forgejo-axi` | same env vars | `az` CLI | `tea` CLI | PR state only (no checks API) |
+| **Merge conflict auto-fix** | `gh` CLI | `glab` CLI | `forgejo-axi` | not supported | `az` CLI | not supported | not supported |
+| **Mergeability polling** | `gh` CLI | `glab` CLI | `forgejo-axi` | not supported | `az` CLI | not supported | not supported |
+| **Failed check log fetching** | `gh` CLI | `glab` CLI | `forgejo-axi` when runtime routes are available | supported | not yet | supported | not supported |
+| **Review-bot findings and comments at the CI gate** | GitHub via `gh` CLI | not supported | not supported | not supported | not supported | not supported | not supported |
+| **[Transient-check rerun](/no-mistakes/reference/repo-config/#cirerun_transient)** (cancellations and pre-run infra failures) | `gh` CLI | not supported | not supported | not supported | not supported | not supported | not supported |
 
 ## What changes when provider wiring is present
 
@@ -259,6 +259,48 @@ Running `tea logins add --url https://your-gitea.example.com --token <token> --n
 
 Because `tea` infers "which instance" from the current directory's git remote - context the daemon's detached worktree does not have - every `tea` invocation `no-mistakes` makes carries `--login <name>` explicitly, resolved from the matched login's name at request time.
 
+## AWS CodeCommit
+
+AWS CodeCommit uses the AWS CLI, version 2. Install it and configure the
+profile your remote uses:
+
+```sh
+# see https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+
+aws configure sso   # or `aws configure` for access keys
+```
+
+`no-mistakes` never handles AWS credentials itself. Every `aws codecommit`
+command carries the `--profile` and `--region` your remote URL names - the same
+values [git-remote-codecommit](https://github.com/aws/git-remote-codecommit)
+pushes with - and leaves anything the URL omits to the AWS CLI's own
+configuration (`AWS_PROFILE`, `AWS_REGION`, `~/.aws/config`) in the daemon's
+environment. These remotes are detected:
+
+- `codecommit::us-east-1://your-profile@your-repo` and `codecommit://your-profile@your-repo` (git-remote-codecommit)
+- `https://git-codecommit.us-east-1.amazonaws.com/v1/repos/your-repo` and its `ssh://` form (including through an [SSH host alias](#ssh-host-aliases)), plus FIPS endpoints
+
+The identity needs `codecommit:GetRepository`, `ListPullRequests`,
+`GetPullRequest`, `CreatePullRequest`, `UpdatePullRequestDescription`, and
+`UpdatePullRequestTitle` on the repository. The PR step first reads the
+repository with that profile, so an expired SSO session skips the step with a
+reminder to run `aws sso login`.
+
+**What you get:**
+
+- PR creation and update (`aws codecommit create-pull-request` / `update-pull-request-description` / `update-pull-request-title`).
+  Descriptions are capped at 10,240 characters and titles at 150; see the
+  [PR step reference](/no-mistakes/reference/pipeline-steps/#pr) for
+  description composition and truncation.
+- PR links that open the pull request in the AWS console for the repository's region
+- CI monitoring of PR state until the PR is merged or closed
+
+**What you don't get:**
+
+- CI checks. CodeCommit has no check or status API for pull requests, so `no-mistakes` cannot see build results for them. Declare `no_ci: true` on the trusted default branch so the CI step does not wait for checks that will never appear - see the [CI step reference](/no-mistakes/reference/pipeline-steps/#ci).
+- PR mergeability polling and merge-conflict auto-fix
+- Fork PR routing (a CodeCommit pull request cannot span repositories)
+
 ## Self-hosted GitHub/GitLab
 
 Self-hosted GitHub Enterprise and self-hosted GitLab instances work through the same `gh` and `glab` CLIs. Authenticate the CLI against your instance (`gh auth login --hostname your-ghe.example.com`, `glab auth login --hostname gitlab.example.com`) and `no-mistakes` will route through the CLI as usual.
@@ -289,7 +331,7 @@ If `ssh -G` is unavailable or the alias does not resolve, detection falls back t
 
 ## Unsupported hosts
 
-If your upstream isn't GitHub, GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, or Gitea:
+If your upstream isn't GitHub, GitLab, Forgejo, Bitbucket Cloud, Azure DevOps, Gitea, or AWS CodeCommit:
 
 - The **push** step still runs - `no-mistakes` pushes through git to the configured target like any other remote.
 - The **PR** step marks itself as `skipped`.
@@ -303,7 +345,7 @@ Everything before push (rebase, review, test, document, lint) still works regard
 no-mistakes doctor
 ```
 
-`doctor` checks `gh` and `az` availability. It also validates every configured forge profile, including its provider config, target host, and online authentication. Without profiles, confirm `glab` is installed and authenticated for GitLab. For Forgejo, run `FORGEJO_BASE_URL=<host> forgejo-axi status --json` from the daemon's environment. For Bitbucket Cloud, confirm the two env vars are set in that environment. For Azure DevOps, confirm the `azure-devops` extension is installed (`az extension show --name azure-devops`) and a PAT is available. For Gitea, confirm `tea` is installed and has a login configured for your instance (`tea logins list`).
+`doctor` checks `gh` and `az` availability. It also validates every configured forge profile, including its provider config, target host, and online authentication. Without profiles, confirm `glab` is installed and authenticated for GitLab. For Forgejo, run `FORGEJO_BASE_URL=<host> forgejo-axi status --json` from the daemon's environment. For Bitbucket Cloud, confirm the two env vars are set in that environment. For Azure DevOps, confirm the `azure-devops` extension is installed (`az extension show --name azure-devops`) and a PAT is available. For Gitea, confirm `tea` is installed and has a login configured for your instance (`tea logins list`). For AWS CodeCommit, confirm `aws codecommit get-repository --repository-name <repo> --profile <profile> --region <region>` succeeds from the daemon's environment.
 
 :::note
 Provider CLIs and credentials inherit the daemon's startup environment. If credentials or PATH-derived tools are missing, check `~/.no-mistakes/logs/daemon.log` for a login-shell environment resolution warning, then see [Environment the daemon sees](/no-mistakes/reference/environment/#environment-the-daemon-sees) for the platform-specific resolution and restart behavior.

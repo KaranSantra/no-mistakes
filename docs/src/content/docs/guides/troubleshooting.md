@@ -272,7 +272,8 @@ Symptom: pipeline completes but the PR step shows `skipped`.
 
 Check the [Provider Integration](/no-mistakes/guides/provider-integration/) requirements. Most common causes:
 
-- `gh`, `glab`, `forgejo-axi`, or `tea` not installed (or, for GitHub, not on `PATH`)
+- `gh`, `glab`, `forgejo-axi`, `tea`, or `aws` not installed (or, for GitHub, not on `PATH`)
+- AWS CodeCommit's profile credentials have expired; for an SSO profile, run `aws sso login --profile <profile>`
 - The provider CLI reports that it is not authenticated; on GitHub, a timed-out or interrupted `gh auth status` is reported separately from auth failure
 - Bitbucket env vars not set in the daemon's environment
 - Upstream is not one of the hosts listed in Provider Integration

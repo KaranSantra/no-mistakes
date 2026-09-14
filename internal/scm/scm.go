@@ -28,6 +28,7 @@ const (
 	ProviderAzureDevOps Provider = "azuredevops"
 	ProviderForgejo     Provider = "forgejo"
 	ProviderGitea       Provider = "gitea"
+	ProviderCodeCommit  Provider = "codecommit"
 	ProviderUnknown     Provider = "unknown"
 )
 
@@ -71,6 +72,9 @@ func DetectProviderStaticContext(ctx context.Context, url string) Provider {
 // detectStaticProvider recognizes providers purely from URL/host text, with no
 // ambient CLI configuration consulted.
 func detectStaticProvider(url string) Provider {
+	if isCodeCommitRemote(url) {
+		return ProviderCodeCommit
+	}
 	lower := strings.ToLower(url)
 	if strings.Contains(lower, "codeberg.org") || strings.Contains(lower, "forgejo") {
 		return ProviderForgejo
@@ -89,6 +93,9 @@ func detectProvider(ctx context.Context, remoteURL string, lookup sshHostnameLoo
 }
 
 func detectProviderWithForgejoBaseURL(ctx context.Context, remoteURL, forgejoBaseURL string, lookup sshHostnameLookup) Provider {
+	if isCodeCommitRemote(remoteURL) {
+		return ProviderCodeCommit
+	}
 	originalHost := ExtractHost(remoteURL)
 	host := resolveHost(ctx, remoteURL, lookup)
 	if host == "" {
@@ -133,9 +140,46 @@ func detectHostedProvider(host string) Provider {
 		return ProviderBitbucket
 	case host == "dev.azure.com" || strings.HasSuffix(host, ".dev.azure.com") || strings.HasSuffix(host, ".visualstudio.com"):
 		return ProviderAzureDevOps
+	case isCodeCommitGitHost(host):
+		return ProviderCodeCommit
 	default:
 		return ProviderUnknown
 	}
+}
+
+// isCodeCommitRemote reports whether remote names an AWS CodeCommit
+// repository. A git-remote-codecommit URL (codecommit://[profile@]repository
+// or codecommit::region://...) carries no host at all, and its repository name
+// may itself look like another provider's host, so callers check it before any
+// host-based detection. A console URL is recognized by its CodeCommit path,
+// because the console host serves every AWS service.
+func isCodeCommitRemote(remote string) bool {
+	lower := strings.ToLower(strings.TrimSpace(remote))
+	if strings.HasPrefix(lower, "codecommit::") || strings.HasPrefix(lower, "codecommit://") {
+		return true
+	}
+	host := ExtractHost(lower)
+	if isCodeCommitGitHost(host) {
+		return true
+	}
+	if !strings.Contains(lower, "/codesuite/codecommit/") {
+		return false
+	}
+	for _, domain := range []string{"console.aws.amazon.com", "console.amazonaws-us-gov.com"} {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCodeCommitGitHost reports whether host is a CodeCommit Git endpoint:
+// git-codecommit.{region}.amazonaws.com or its git-codecommit-fips variant.
+func isCodeCommitGitHost(host string) bool {
+	if !strings.HasPrefix(host, "git-codecommit.") && !strings.HasPrefix(host, "git-codecommit-fips.") {
+		return false
+	}
+	return strings.HasSuffix(host, ".amazonaws.com")
 }
 
 func detectLegacyProviderHost(host string) Provider {
@@ -531,6 +575,8 @@ func (p Provider) CLIName() string {
 		return "forgejo-axi"
 	case ProviderGitea:
 		return "tea"
+	case ProviderCodeCommit:
+		return "aws"
 	default:
 		return ""
 	}
@@ -550,6 +596,8 @@ func (p Provider) AuthCheckCommand() []string {
 		return []string{"forgejo-axi", "status", "--json"}
 	case ProviderGitea:
 		return []string{"tea", "whoami"}
+	case ProviderCodeCommit:
+		return []string{"aws", "sts", "get-caller-identity"}
 	default:
 		return nil
 	}
