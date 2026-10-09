@@ -251,6 +251,79 @@ func TestStepActivity(t *testing.T) {
 	}
 }
 
+// TestStepAgentStartedRecordsAgentAndModel pins that a turn's agent and model
+// are on the step row from the moment it starts, survive the process exit so
+// status can name the most recent turn, and reset when a new round or a fresh
+// step execution begins so status never names a previous round's model.
+func TestStepAgentStartedRecordsAgentAndModel(t *testing.T) {
+	d := openTestDB(t)
+	repo, _ := d.InsertRepo("/home/user/project", "git@github.com:user/project.git", "main")
+	run, _ := d.InsertRun(repo.ID, "feature", "abc", "def")
+	step, _ := d.InsertStepResult(run.ID, types.StepReview)
+
+	if err := d.StartStep(step.ID); err != nil {
+		t.Fatalf("start step: %v", err)
+	}
+	assertAgent := func(stage, wantAgent, wantModel string) {
+		t.Helper()
+		got, err := d.GetStepResult(step.ID)
+		if err != nil {
+			t.Fatalf("%s: get step: %v", stage, err)
+		}
+		gotAgent, gotModel := "", ""
+		if got.AgentName != nil {
+			gotAgent = *got.AgentName
+		}
+		if got.AgentModel != nil {
+			gotModel = *got.AgentModel
+		}
+		if gotAgent != wantAgent || gotModel != wantModel {
+			t.Fatalf("%s: agent/model = %q/%q, want %q/%q", stage, gotAgent, gotModel, wantAgent, wantModel)
+		}
+	}
+	assertAgent("before any turn", "", "")
+
+	if err := d.SetStepAgentStarted(step.ID, "pi started pid=12345", 12345, "pi", "provider-x/model-a"); err != nil {
+		t.Fatalf("set agent started: %v", err)
+	}
+	got, _ := d.GetStepResult(step.ID)
+	if got.AgentPID == nil || *got.AgentPID != 12345 {
+		t.Fatalf("agent_pid = %v, want 12345", got.AgentPID)
+	}
+	assertAgent("turn started", "pi", "provider-x/model-a")
+
+	if err := d.SetStepAgentActivity(step.ID, "pi exited pid=12345 status=success", nil); err != nil {
+		t.Fatalf("clear agent activity: %v", err)
+	}
+	assertAgent("turn exited", "pi", "provider-x/model-a")
+
+	if err := d.StartStepFixRound(step.ID, 3); err != nil {
+		t.Fatalf("start fix round: %v", err)
+	}
+	assertAgent("fix round started", "", "")
+
+	if err := d.SetStepAgentStarted(step.ID, "claude started pid=23456", 23456, "claude", ""); err != nil {
+		t.Fatalf("set default-model agent started: %v", err)
+	}
+	assertAgent("default-model turn", "claude", "")
+
+	if err := d.SetStepAgentStarted(step.ID, "pi started pid=34567", 34567, "pi", "model-b"); err != nil {
+		t.Fatalf("set agent started: %v", err)
+	}
+	if err := d.ResetStepsFrom(run.ID, step.StepOrder); err != nil {
+		t.Fatalf("reset steps: %v", err)
+	}
+	assertAgent("steps reset", "", "")
+
+	if err := d.SetStepAgentStarted(step.ID, "pi started pid=45678", 45678, "pi", "model-b"); err != nil {
+		t.Fatalf("set agent started: %v", err)
+	}
+	if err := d.StartStep(step.ID); err != nil {
+		t.Fatalf("restart step: %v", err)
+	}
+	assertAgent("step restarted", "", "")
+}
+
 func TestCompleteStep(t *testing.T) {
 	d := openTestDB(t)
 	repo, _ := d.InsertRepo("/home/user/project", "git@github.com:user/project.git", "main")

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kunchenguid/no-mistakes/internal/agentcfg"
 	"github.com/kunchenguid/no-mistakes/internal/runenv"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 )
@@ -822,5 +823,44 @@ exit 1
 	}
 	if result.UsageReported {
 		t.Error("Pi reported no usage; the result must not claim it did")
+	}
+}
+
+// TestPiAgent_StartEventCarriesConfiguredModel pins that the model a turn was
+// asked to run is known when the turn starts, not only once the result
+// reports the served model: the pipeline records it on the step so status can
+// name the model of the turn in flight.
+func TestPiAgent_StartEventCarriesConfiguredModel(t *testing.T) {
+	dir := t.TempDir()
+	bin := writeFakePi(t, dir, `#!/bin/sh
+cat > /dev/null
+printf '%s\n' '{"type":"agent_end","messages":[{"role":"assistant","content":[{"type":"text","text":"done"}]}]}'
+`, strings.Join([]string{
+		"@echo off",
+		"more > nul",
+		"echo {\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"done\"}]}]}",
+	}, "\r\n"))
+
+	a, err := NewWithOptions(types.AgentPi, bin, nil, Options{Profile: agentcfg.Profile{Model: "example-provider/example-model"}})
+	if err != nil {
+		t.Fatalf("new pi agent: %v", err)
+	}
+	var starts []LifecycleEvent
+	if _, err := a.Run(context.Background(), RunOpts{
+		Prompt: "review",
+		CWD:    t.TempDir(),
+		OnLifecycle: func(e LifecycleEvent) {
+			if e.Phase == LifecyclePhaseStart {
+				starts = append(starts, e)
+			}
+		},
+	}); err != nil {
+		t.Fatalf("run pi: %v", err)
+	}
+	if len(starts) != 1 {
+		t.Fatalf("start events = %v, want exactly one", starts)
+	}
+	if starts[0].Agent != "pi" || starts[0].Model != "example-provider/example-model" {
+		t.Fatalf("start event = %+v, want agent pi and the configured model", starts[0])
 	}
 }

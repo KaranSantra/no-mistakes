@@ -789,8 +789,7 @@ func (e *Executor) executeStep(ctx context.Context, step Step, sr *db.StepResult
 		}
 		switch event.Phase {
 		case agent.LifecyclePhaseStart:
-			pid := event.PID
-			if dbErr := e.db.SetStepAgentActivity(sr.ID, text, &pid); dbErr != nil {
+			if dbErr := e.db.SetStepAgentStarted(sr.ID, text, event.PID, event.Agent, event.Model); dbErr != nil {
 				slog.Warn("failed to set step agent activity in db", "step", stepName, "error", dbErr)
 			}
 		case agent.LifecyclePhaseExit:

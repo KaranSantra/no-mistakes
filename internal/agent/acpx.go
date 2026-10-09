@@ -60,7 +60,7 @@ func (a *acpxAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, error) 
 	}
 	defer started.closePipes()
 	pid := started.pid()
-	emitAgentStarted(opts, a.Name(), pid)
+	emitAgentStarted(opts, a.Name(), a.model, pid)
 
 	stdinErrCh := writeNativeAgentStdin(stdin, prompt)
 

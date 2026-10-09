@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kunchenguid/no-mistakes/internal/agentcfg"
 	"github.com/kunchenguid/no-mistakes/internal/shellenv"
+	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
 // claudeMaxRetries is the number of additional attempts past the initial
@@ -89,7 +91,7 @@ func (a *claudeAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, error
 	}
 	defer started.closePipes()
 	pid := started.pid()
-	emitAgentStarted(opts, "claude", pid)
+	emitAgentStarted(opts, "claude", agentcfg.ModelFromArgs(types.AgentClaude, a.extraArgs), pid)
 
 	stderrWG.Add(1)
 	go func() {

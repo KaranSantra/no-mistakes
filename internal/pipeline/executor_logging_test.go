@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kunchenguid/no-mistakes/internal/agent"
+	"github.com/kunchenguid/no-mistakes/internal/db"
 	"github.com/kunchenguid/no-mistakes/internal/ipc"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 )
@@ -219,6 +220,71 @@ func TestExecutor_AgentLifecycleLoggedAndClearsPID(t *testing.T) {
 	}
 	if steps[0].AgentPID != nil {
 		t.Fatalf("agent pid = %v, want nil after exit", steps[0].AgentPID)
+	}
+}
+
+// modelLifecycleTestAgent reports a turn start carrying the configured model
+// and lets the test observe the step row while that turn is still running.
+type modelLifecycleTestAgent struct {
+	duringTurn func()
+}
+
+func (modelLifecycleTestAgent) Name() string { return "pi" }
+
+func (a modelLifecycleTestAgent) Run(_ context.Context, opts agent.RunOpts) (*agent.Result, error) {
+	if opts.OnLifecycle != nil {
+		opts.OnLifecycle(agent.LifecycleEvent{Agent: "pi", Model: "provider-x/model-a", Phase: agent.LifecyclePhaseStart, PID: 4343, Message: "pi started pid=4343"})
+	}
+	a.duringTurn()
+	if opts.OnLifecycle != nil {
+		opts.OnLifecycle(agent.LifecycleEvent{Agent: "pi", Phase: agent.LifecyclePhaseExit, PID: 4343, Message: "pi exited pid=4343 status=success"})
+	}
+	return &agent.Result{Text: "ok", Model: "model-a"}, nil
+}
+
+func (modelLifecycleTestAgent) Close() error { return nil }
+
+// TestExecutor_AgentStartRecordsAgentAndModelOnStep pins that the agent and
+// model of the turn in flight are on the step row while the turn runs, not
+// only in agent_invocations once it ends.
+func TestExecutor_AgentStartRecordsAgentAndModelOnStep(t *testing.T) {
+	database, p, run, repo := setupTest(t)
+	workDir := t.TempDir()
+
+	var midTurn *db.StepResult
+	readStep := func() {
+		steps, err := database.GetStepsByRun(run.ID)
+		if err != nil {
+			t.Fatalf("get steps: %v", err)
+		}
+		midTurn = steps[0]
+	}
+	step := &adaptiveCallStep{
+		name: types.StepReview,
+		fn: func(sctx *StepContext) (*StepOutcome, error) {
+			if _, err := sctx.Agent.Run(sctx.Ctx, agent.RunOpts{Prompt: "work", CWD: sctx.WorkDir}); err != nil {
+				t.Fatalf("agent run: %v", err)
+			}
+			return &StepOutcome{ExitCode: 0}, nil
+		},
+	}
+
+	exec := NewExecutor(database, p, nil, modelLifecycleTestAgent{duringTurn: readStep}, []Step{step}, nil)
+	if err := exec.Execute(context.Background(), run, repo, workDir); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if midTurn == nil {
+		t.Fatal("the agent turn never ran")
+	}
+	if midTurn.AgentPID == nil || *midTurn.AgentPID != 4343 {
+		t.Fatalf("mid-turn agent pid = %v, want 4343", midTurn.AgentPID)
+	}
+	if midTurn.AgentName == nil || *midTurn.AgentName != "pi" {
+		t.Fatalf("mid-turn agent = %v, want pi", midTurn.AgentName)
+	}
+	if midTurn.AgentModel == nil || *midTurn.AgentModel != "provider-x/model-a" {
+		t.Fatalf("mid-turn model = %v, want the model the turn started with", midTurn.AgentModel)
 	}
 }
 

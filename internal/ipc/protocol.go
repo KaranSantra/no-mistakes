@@ -379,6 +379,11 @@ type StepResultInfo struct {
 	LastActivityAt   *int64   `json:"last_activity_at,omitempty"`
 	LastActivity     *string  `json:"last_activity,omitempty"`
 	AgentPID         *int     `json:"agent_pid,omitempty"`
+	// AgentName and AgentModel identify the step's current or most recent
+	// agent turn, recorded when the turn starts. AgentModel is empty when the
+	// harness runs its own default model.
+	AgentName  string `json:"agent_name,omitempty"`
+	AgentModel string `json:"agent_model,omitempty"`
 	// OverrideReason is non-empty when a human answered ActionApprove on this
 	// step's gate despite an unresolved external condition (currently: the CI
 	// step's live checks were still failing). See

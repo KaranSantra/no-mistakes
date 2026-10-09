@@ -12,7 +12,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kunchenguid/no-mistakes/internal/agentcfg"
 	"github.com/kunchenguid/no-mistakes/internal/shellenv"
+	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
 const grokScannerMaxTokenSize = 256 * 1024 * 1024
@@ -109,7 +111,7 @@ func (a *grokAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, error) 
 	}
 	defer started.closePipes()
 	pid := started.pid()
-	emitAgentStarted(opts, "grok", pid)
+	emitAgentStarted(opts, "grok", agentcfg.ModelFromArgs(types.AgentGrok, a.extraArgs), pid)
 
 	stderrWG.Add(1)
 	go func() {

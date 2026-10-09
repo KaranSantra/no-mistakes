@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kunchenguid/no-mistakes/internal/agentcfg"
 	"github.com/kunchenguid/no-mistakes/internal/shellenv"
+	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
 // piAgent spawns the pi CLI for each invocation. Pi reads its prompt from
@@ -79,7 +81,7 @@ func (a *piAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, error) {
 	}
 	defer started.closePipes()
 	pid := started.pid()
-	emitAgentStarted(opts, "pi", pid)
+	emitAgentStarted(opts, "pi", agentcfg.ModelFromArgs(types.AgentPi, a.extraArgs), pid)
 
 	prompt := buildPiPrompt(opts.Prompt, opts.JSONSchema)
 	stdinErrCh := writeNativeAgentStdin(stdin, prompt)

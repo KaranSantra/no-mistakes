@@ -213,7 +213,12 @@ func EnsureGateNeutralized(a Agent) error {
 // LifecycleEvent describes process-level activity for an agent invocation.
 // The pipeline records these as step log lines and active-step heartbeats.
 type LifecycleEvent struct {
-	Agent   string
+	Agent string
+	// Model is set on LifecyclePhaseStart to the model the concrete adapter
+	// asked its harness to run, so the turn in flight is identifiable before
+	// Result.Model reports what was served. Empty means the harness runs its
+	// own default model.
+	Model   string
 	Phase   string
 	PID     int
 	Message string

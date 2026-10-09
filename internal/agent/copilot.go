@@ -10,7 +10,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kunchenguid/no-mistakes/internal/agentcfg"
 	"github.com/kunchenguid/no-mistakes/internal/shellenv"
+	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
 // copilotAgent spawns the GitHub Copilot CLI for each invocation. Copilot
@@ -52,7 +54,7 @@ func (a *copilotAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, erro
 	}
 	defer started.closePipes()
 	pid := started.pid()
-	emitAgentStarted(opts, "copilot", pid)
+	emitAgentStarted(opts, "copilot", agentcfg.ModelFromArgs(types.AgentCopilot, a.extraArgs), pid)
 
 	stderrWG.Add(1)
 	go func() {
