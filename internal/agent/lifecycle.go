@@ -34,9 +34,13 @@ const (
 // coalesced until the interval elapses.
 const nativeAgentActivityInterval = 5 * time.Second
 
-func emitAgentStarted(opts RunOpts, name string, pid int) {
+// emitAgentStarted reports a spawned native subprocess. model is the model the
+// adapter asked the harness to run (see agentcfg.ModelFromArgs), or "" when the
+// harness runs its own default.
+func emitAgentStarted(opts RunOpts, name, model string, pid int) {
 	emitLifecycle(opts, LifecycleEvent{
 		Agent:   name,
+		Model:   model,
 		Phase:   LifecyclePhaseStart,
 		PID:     pid,
 		Message: fmt.Sprintf("%s started pid=%d", name, pid),

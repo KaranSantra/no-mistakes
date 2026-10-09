@@ -423,3 +423,51 @@ func NativeArgs(name types.AgentName, p Profile, rawArgs []string) []string {
 	}
 	return out
 }
+
+// modelFlags lists the argv flags through which each native harness accepts a
+// model, matching the spellings the model knobs above emit or treat as pinned.
+var modelFlags = map[types.AgentName][]string{
+	types.AgentClaude:  {"--model"},
+	types.AgentCodex:   {"-m", "--model"},
+	types.AgentGrok:    {"--model", "-m"},
+	types.AgentCopilot: {"--model"},
+	types.AgentPi:      {"--model"},
+}
+
+// ModelFromArgs reports the model a native harness is asked to run by the
+// argv it is launched with: either the operator's raw agent_args_override pin
+// or the flag NativeArgs mapped from the profile. The last occurrence wins, as
+// it does for the harness's own flag parsing. It returns "" when no model is
+// pinned (the harness runs its own default) or the harness takes no model
+// flag, so callers never invent a model the run did not request.
+func ModelFromArgs(name types.AgentName, args []string) string {
+	flags := modelFlags[name]
+	model := ""
+	for i, arg := range args {
+		for _, flag := range flags {
+			if arg == flag && i+1 < len(args) {
+				model = args[i+1]
+			} else if value, ok := strings.CutPrefix(arg, flag+"="); ok {
+				model = value
+			}
+		}
+		if name != types.AgentCodex {
+			continue
+		}
+		// codex also takes the model as a `-c model="<id>"` config override.
+		assignment := ""
+		if (arg == "-c" || arg == "--config") && i+1 < len(args) {
+			assignment = args[i+1]
+		} else {
+			for _, prefix := range []string{"-c=", "--config="} {
+				if value, ok := strings.CutPrefix(arg, prefix); ok {
+					assignment = value
+				}
+			}
+		}
+		if key, value, ok := strings.Cut(assignment, "="); ok && strings.TrimSpace(key) == "model" {
+			model = strings.Trim(strings.TrimSpace(value), `"'`)
+		}
+	}
+	return model
+}

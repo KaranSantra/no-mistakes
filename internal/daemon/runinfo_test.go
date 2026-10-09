@@ -113,6 +113,39 @@ func TestStepToInfoIncludesFixSummaries(t *testing.T) {
 	}
 }
 
+func TestStepToInfoIncludesAgentAndModelOfTheTurnInFlight(t *testing.T) {
+	d, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer d.Close()
+
+	repo, err := d.InsertRepo("/home/user/project", "git@github.com:user/project.git", "main")
+	if err != nil {
+		t.Fatalf("insert repo: %v", err)
+	}
+	run, err := d.InsertRun(repo.ID, "feature", "abc", "def")
+	if err != nil {
+		t.Fatalf("insert run: %v", err)
+	}
+	step, err := d.InsertStepResult(run.ID, types.StepReview)
+	if err != nil {
+		t.Fatalf("insert step: %v", err)
+	}
+	if err := d.SetStepAgentStarted(step.ID, "pi started pid=4242", 4242, "pi", "provider-x/model-a"); err != nil {
+		t.Fatalf("record turn start: %v", err)
+	}
+	step, err = d.GetStepResult(step.ID)
+	if err != nil {
+		t.Fatalf("reload step: %v", err)
+	}
+
+	info := stepToInfo(d, step)
+	if info.AgentName != "pi" || info.AgentModel != "provider-x/model-a" {
+		t.Errorf("agent/model = %q/%q, want pi/provider-x/model-a", info.AgentName, info.AgentModel)
+	}
+}
+
 func TestStepToInfoLabelsCombinedHousekeepingScope(t *testing.T) {
 	d, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

@@ -121,7 +121,7 @@ func (a *antigravityAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, 
 	}
 	defer started.closePipes()
 	pid := started.pid()
-	emitAgentStarted(opts, "antigravity", pid)
+	emitAgentStarted(opts, "antigravity", "", pid)
 
 	var stderrBuf []byte
 	var stderrWG sync.WaitGroup

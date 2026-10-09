@@ -356,3 +356,38 @@ func TestProfileString(t *testing.T) {
 		t.Errorf("Profile.String() = %q", got)
 	}
 }
+
+// TestModelFromArgsReadsTheModelEachHarnessIsLaunchedWith pins that the model
+// recorded when a turn starts is the one its argv requests, whether the
+// operator pinned it in agent_args_override or NativeArgs mapped it from the
+// profile, and that an unpinned harness reports no model rather than a guess.
+func TestModelFromArgsReadsTheModelEachHarnessIsLaunchedWith(t *testing.T) {
+	tests := []struct {
+		name  string
+		agent types.AgentName
+		args  []string
+		want  string
+	}{
+		{"mapped claude", types.AgentClaude, NativeArgs(types.AgentClaude, Profile{Model: "model-a", Effort: EffortLow}, nil), "model-a"},
+		{"mapped codex", types.AgentCodex, NativeArgs(types.AgentCodex, Profile{Model: "model-a"}, nil), "model-a"},
+		{"mapped grok", types.AgentGrok, NativeArgs(types.AgentGrok, Profile{Model: "model-a"}, nil), "model-a"},
+		{"mapped copilot", types.AgentCopilot, NativeArgs(types.AgentCopilot, Profile{Model: "model-a"}, nil), "model-a"},
+		{"mapped pi with provider", types.AgentPi, NativeArgs(types.AgentPi, Profile{Model: "provider-x/model-a", Effort: EffortHigh}, nil), "provider-x/model-a"},
+		{"equals spelling", types.AgentClaude, []string{"--model=model-b"}, "model-b"},
+		{"grok short flag", types.AgentGrok, []string{"-m", "model-b"}, "model-b"},
+		{"codex config override", types.AgentCodex, []string{"-c", `model="model-c"`, "-c", `model_reasoning_effort="low"`}, "model-c"},
+		{"codex config equals", types.AgentCodex, []string{`--config=model="model-c"`}, "model-c"},
+		{"last occurrence wins", types.AgentPi, []string{"--model", "model-a", "--model", "model-b"}, "model-b"},
+		{"flag without value", types.AgentPi, []string{"--model"}, ""},
+		{"unpinned harness default", types.AgentClaude, []string{"--verbose"}, ""},
+		{"effort flag is not a model", types.AgentPi, []string{"--thinking", "high"}, ""},
+		{"harness without a model flag", types.AgentRovoDev, []string{"--model", "model-a"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ModelFromArgs(tt.agent, tt.args); got != tt.want {
+				t.Fatalf("ModelFromArgs(%s, %q) = %q, want %q", tt.agent, tt.args, got, tt.want)
+			}
+		})
+	}
+}

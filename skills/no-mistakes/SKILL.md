@@ -165,7 +165,8 @@ Run the pipeline and decide on its findings as they come up:
    gate resolution, auto-resume the run, or make `--yes` the default.
    While a step is actively `running` or `fixing`, `axi status` may include
    `active_steps` with step-scoped `active_for`, current-round `round_active_for`,
-   `last_activity`, a native `agent_pid` when a subprocess agent is running, and the current round such as `round 1`,
+   `last_activity`, a native `agent_pid` when a subprocess agent is running, the `agent` and
+   `model` of the step's current or most recent agent turn, and the current round such as `round 1`,
    `auto-fix 1/3`, or `fix 2`. If `last_activity` is prefixed with
    `quiet`, no step log or native-agent lifecycle activity has arrived for
    longer than `step_quiet_warning`. Treat that as a liveness clue, not as

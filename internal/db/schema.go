@@ -302,6 +302,11 @@ var migrationStatements = []string{
 	// restart, resume, and axi status/logs on an already-terminal run.
 	`ALTER TABLE step_results ADD COLUMN override_reason TEXT`,
 	`ALTER TABLE step_results ADD COLUMN skip_reason TEXT`,
+	// The agent and model of the step's current or most recent agent turn,
+	// recorded when the turn starts (agent_invocations only learns the model
+	// when it ends). Observability only; NULL means unknown.
+	`ALTER TABLE step_results ADD COLUMN agent_name TEXT`,
+	`ALTER TABLE step_results ADD COLUMN agent_model TEXT`,
 	// Session-fidelity telemetry columns (all nullable so pre-existing rows read
 	// back as unknown, never a fabricated zero).
 	`ALTER TABLE agent_invocations ADD COLUMN model_provider TEXT`,

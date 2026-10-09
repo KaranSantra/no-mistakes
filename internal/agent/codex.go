@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kunchenguid/no-mistakes/internal/agentcfg"
 	"github.com/kunchenguid/no-mistakes/internal/shellenv"
+	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
 // codexAgent spawns the codex CLI for each invocation.
@@ -105,7 +107,7 @@ func (a *codexAgent) runOnce(ctx context.Context, opts RunOpts) (*Result, error)
 	}
 	defer started.closePipes()
 	pid := started.pid()
-	emitAgentStarted(opts, "codex", pid)
+	emitAgentStarted(opts, "codex", agentcfg.ModelFromArgs(types.AgentCodex, a.extraArgs), pid)
 
 	stderrWG.Add(1)
 	go func() {

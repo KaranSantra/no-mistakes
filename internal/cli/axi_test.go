@@ -221,6 +221,8 @@ func TestRunObjectRendersActiveStepDiagnostics(t *testing.T) {
 				LastActivityAt:   &last,
 				LastActivity:     "codex started pid=4242",
 				AgentPID:         &pid,
+				AgentName:        "codex",
+				AgentModel:       "example-model-1",
 				FixRoundCount:    0,
 				AutoFixLimit:     3,
 				PendingFixSource: db.RoundSelectionSourceAutoFix,
@@ -231,10 +233,10 @@ func TestRunObjectRendersActiveStepDiagnostics(t *testing.T) {
 	out := axiDoc(runObjectField(rv))
 
 	for _, want := range []string{
-		"active_steps[1]{step,status,active_for,round_active_for,last_activity,agent_pid,round}:\n",
+		"active_steps[1]{step,status,active_for,round_active_for,last_activity,agent_pid,agent,model,round}:\n",
 		"review,fixing,20m0s,30s",
 		"quiet 11m0s ago: codex started pid=4242",
-		`,"4242",auto-fix 1/3`,
+		`,"4242",codex,example-model-1,auto-fix 1/3`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("active diagnostics missing %q in:\n%s", want, out)
@@ -261,8 +263,45 @@ func TestRunObjectRendersLegacyActiveStepWithoutRoundClock(t *testing.T) {
 	}
 
 	out := axiDoc(runObjectField(rv))
-	if !strings.Contains(out, `review,running,2m0s,"",unknown,"",starting`) {
+	if !strings.Contains(out, `review,running,2m0s,"",unknown,"","","",starting`) {
 		t.Fatalf("legacy active step should retain its step clock and leave the unavailable round clock blank:\n%s", out)
+	}
+}
+
+// TestStatusFromDBRendersAgentAndModelOfTheTurnInFlight pins the database
+// path of axi status: the agent and model recorded when the turn started are
+// printed for the active step while the turn is still running.
+func TestStatusFromDBRendersAgentAndModelOfTheTurnInFlight(t *testing.T) {
+	database := openTestDB(t)
+	repo, err := database.InsertRepo(t.TempDir(), "origin", "main")
+	if err != nil {
+		t.Fatalf("insert repo: %v", err)
+	}
+	run, err := database.InsertRun(repo.ID, "feature/current", "abcdef1234567890", "base")
+	if err != nil {
+		t.Fatalf("insert run: %v", err)
+	}
+	if err := database.UpdateRunStatus(run.ID, types.RunRunning); err != nil {
+		t.Fatalf("mark run running: %v", err)
+	}
+	step, err := database.InsertStepResult(run.ID, types.StepReview)
+	if err != nil {
+		t.Fatalf("insert step: %v", err)
+	}
+	if err := database.StartStep(step.ID); err != nil {
+		t.Fatalf("start step: %v", err)
+	}
+	if err := database.SetStepAgentStarted(step.ID, "pi started pid=4242", 4242, "pi", "provider-x/model-a"); err != nil {
+		t.Fatalf("record turn start: %v", err)
+	}
+
+	steps, err := database.GetStepsByRun(run.ID)
+	if err != nil {
+		t.Fatalf("load steps: %v", err)
+	}
+	out := axiDoc(runObjectField(runViewFromDB(run, steps, database)))
+	if !strings.Contains(out, `,"4242",pi,provider-x/model-a,`) {
+		t.Fatalf("status should name the agent and model of the turn in flight, got:\n%s", out)
 	}
 }
 
