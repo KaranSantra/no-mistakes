@@ -376,7 +376,14 @@ func TestModelFromArgsReadsTheModelEachHarnessIsLaunchedWith(t *testing.T) {
 		{"equals spelling", types.AgentClaude, []string{"--model=model-b"}, "model-b"},
 		{"grok short flag", types.AgentGrok, []string{"-m", "model-b"}, "model-b"},
 		{"codex config override", types.AgentCodex, []string{"-c", `model="model-c"`, "-c", `model_reasoning_effort="low"`}, "model-c"},
+		{"codex long config split", types.AgentCodex, []string{"--config", `model="model-c"`}, "model-c"},
 		{"codex config equals", types.AgentCodex, []string{`--config=model="model-c"`}, "model-c"},
+		{"codex short config equals", types.AgentCodex, []string{`-c=model="model-c"`}, "model-c"},
+		{"codex short config inline", types.AgentCodex, []string{`-c model="model-c"`}, "model-c"},
+		{"codex long config inline", types.AgentCodex, []string{`--config model="model-c"`}, "model-c"},
+		{"codex unrelated config", types.AgentCodex, []string{`-c fallback_model="model-c"`}, ""},
+		{"codex later config wins", types.AgentCodex, []string{"-m", "model-a", `--config model="model-c"`}, "model-c"},
+		{"codex later flag wins", types.AgentCodex, []string{`-c model="model-c"`, "--model=model-a"}, "model-a"},
 		{"last occurrence wins", types.AgentPi, []string{"--model", "model-a", "--model", "model-b"}, "model-b"},
 		{"flag without value", types.AgentPi, []string{"--model"}, ""},
 		{"unpinned harness default", types.AgentClaude, []string{"--verbose"}, ""},
@@ -387,6 +394,26 @@ func TestModelFromArgsReadsTheModelEachHarnessIsLaunchedWith(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := ModelFromArgs(tt.agent, tt.args); got != tt.want {
 				t.Fatalf("ModelFromArgs(%s, %q) = %q, want %q", tt.agent, tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCodexConfigModelPinMatchesReportedModel(t *testing.T) {
+	for _, args := range [][]string{
+		{"-c", `model="model-c"`},
+		{"--config", `model="model-c"`},
+		{`-c=model="model-c"`},
+		{`--config=model="model-c"`},
+		{`-c model="model-c"`},
+		{`--config model="model-c"`},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			if got := NativeArgs(types.AgentCodex, Profile{Model: "model-a"}, args); len(got) != 0 {
+				t.Fatalf("NativeArgs with %q = %q, want no added model flag", args, got)
+			}
+			if got := ModelFromArgs(types.AgentCodex, args); got != "model-c" {
+				t.Fatalf("ModelFromArgs(%q) = %q, want model-c", args, got)
 			}
 		})
 	}

@@ -177,27 +177,35 @@ func codexConfigArgs(key string) func(string) []string {
 	return func(value string) []string { return []string{"-c", key + `="` + value + `"`} }
 }
 
+func codexConfigAssignment(args []string, i int) (string, string, bool) {
+	arg := args[i]
+	assignment := ""
+	if (arg == "-c" || arg == "--config") && i+1 < len(args) {
+		assignment = args[i+1]
+	} else {
+		for _, prefix := range []string{"-c ", "--config ", "-c=", "--config="} {
+			if value, ok := strings.CutPrefix(arg, prefix); ok {
+				assignment = value
+				break
+			}
+		}
+	}
+	key, value, ok := strings.Cut(strings.TrimSpace(assignment), "=")
+	return strings.TrimSpace(key), value, ok
+}
+
 // codexConfigPinned reports whether a raw override already sets a codex config
 // key, in either the split `-c key=value` form or a single token containing the
 // config flag and assignment.
 func codexConfigPinned(key string, flags ...string) func([]string) bool {
 	flagMatch := flagPinned(flags...)
-	assignmentMatches := func(arg string) bool {
-		assignmentKey, _, ok := strings.Cut(strings.TrimSpace(arg), "=")
-		return ok && strings.TrimSpace(assignmentKey) == key
-	}
 	return func(rawArgs []string) bool {
 		if len(flags) > 0 && flagMatch(rawArgs) {
 			return true
 		}
-		for i, arg := range rawArgs {
-			if (arg == "-c" || arg == "--config") && i+1 < len(rawArgs) && assignmentMatches(rawArgs[i+1]) {
+		for i := range rawArgs {
+			if assignmentKey, _, ok := codexConfigAssignment(rawArgs, i); ok && assignmentKey == key {
 				return true
-			}
-			for _, prefix := range []string{"-c ", "--config ", "-c=", "--config="} {
-				if strings.HasPrefix(arg, prefix) && assignmentMatches(strings.TrimPrefix(arg, prefix)) {
-					return true
-				}
 			}
 		}
 		return false
@@ -454,18 +462,7 @@ func ModelFromArgs(name types.AgentName, args []string) string {
 		if name != types.AgentCodex {
 			continue
 		}
-		// codex also takes the model as a `-c model="<id>"` config override.
-		assignment := ""
-		if (arg == "-c" || arg == "--config") && i+1 < len(args) {
-			assignment = args[i+1]
-		} else {
-			for _, prefix := range []string{"-c=", "--config="} {
-				if value, ok := strings.CutPrefix(arg, prefix); ok {
-					assignment = value
-				}
-			}
-		}
-		if key, value, ok := strings.Cut(assignment, "="); ok && strings.TrimSpace(key) == "model" {
+		if key, value, ok := codexConfigAssignment(args, i); ok && key == "model" {
 			model = strings.Trim(strings.TrimSpace(value), `"'`)
 		}
 	}
